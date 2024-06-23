@@ -39,7 +39,7 @@ clsector:
 	
 	; mov dl, byte [BootDrive]
 	ret
-	
+
 ; 
 ; DX - fragId
 ; 
@@ -99,12 +99,13 @@ main:
 	
 	; Read floppy into memory
 	; Write 8K to address: 7C00h
-	mov dh, 0
-	mov dl, [BootDrive]
 	mov bx, buffer
-	mov ah, 2
-	mov cl, 2
-	mov al, 1 ; Load 32 * 256 bytes [8 KB]
+	mov ah, 2           ; bios read sector
+	mov al, 1           ; sectors to load  --- Load 32 * 256 bytes [8 KB]
+	mov cl, 2           ; sector
+	mov ch, 0           ; track
+	mov dh, 0           ; head
+	mov dl, [BootDrive] ; drive
 	int 13h
 	
 	load_root:
@@ -166,7 +167,7 @@ main:
 		
 	jmp $
 
-print:
+DisplayMessage:
 	push ax
 	mov ah, 0eh
 .rep:
@@ -179,7 +180,7 @@ print:
 	pop ax
 	ret
 
-
+msgProgress db ".", 0x00
 file_not_found db 'KERNEL.BIN was not found!', 0dh, 0ah, 0
 
 BootFile  db 0ah, 'KERNEL.BIN', 0
