@@ -3,6 +3,8 @@
 bits 16
 ORG 0x0200
 
+# https://forum.osdev.org/viewtopic.php?t=33574&start=15
+
 %macro __print_hex 0
 	and ax, 0x000f
 	mov bx, 0x0030

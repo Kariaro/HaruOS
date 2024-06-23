@@ -1,7 +1,9 @@
 bits 16
 org 0x0000
 
-jmp short START
+;  http://skelix.net/skelixos/tutorial02_en.html
+
+jmp short boot_start
 nop
 
     OEMName             db  "HARUBOOT"
@@ -23,7 +25,7 @@ nop
 
 ;    FileSystem          db  "FAT32  "
 
-START:
+boot_start:
     cli
     ; adjust code frame to [07C0:0000]
     mov ax, 0x07C0
@@ -32,7 +34,7 @@ START:
     mov fs, ax
     mov gs, ax
 
-    ; create stack
+    ; create stack at [07C0:FFFF]
     mov ax, 0x0000
     mov ss, ax
     mov sp, 0xFFFF
@@ -44,8 +46,7 @@ START:
     add ax, WORD [ReservedSectors]
     mov WORD [datasector], ax
 
-    ; read 1st data cluster into memory (7C00:0200)
-    ; mov cx, WORD [SectorsPerCluster]
+    ; read root directory cluster into memory [7C00:0200]
     mov ax, WORD [RootDirectoryStart]
     call ClusterLBA
     mov cx, 0x0001
@@ -66,9 +67,9 @@ START:
         je .KERNEL_FOUND
         add di, 0x0020
         loop .FIND_KERNEL
-        jmp .ERROR
+        jmp .KERNEL_NOT_FOUND
     .KERNEL_FOUND:
-        ; read kernel into code location
+        ; read kernel into code location [07C0:0200]
         mov ax, WORD [di + 0x1A]
         call ClusterLBA
         mov cx, 0x0008
@@ -81,16 +82,22 @@ START:
         and al, ~1
         out 0x92, al
 
-        ; far jump into kernel
+        ; enter 32 bit protected mode  
+        ; cli              ; disable interrupts
+        ; lgdt [gdtr]      ; load GDT register with start address of Global Descriptor Table
+        ; mov  eax, cr0 
+        ; or   al, 1       ; set PE (Protection Enable) bit in CR0 (Control Register 0)
+        ; mov  cr0, eax
+        ; jmp 0x0008:__protected_mode
+
+        ; far jump into kernel code located [07C0:0200]
         jmp 0x07c0:0x0200
-
-.ERROR:
-    mov si, file_not_found
-    call DisplayMessage
-    mov ah, 0x00
-    int 16h  ; BIOS await keypress
-    int 19h
-
+    .KERNEL_NOT_FOUND:
+        mov si, file_not_found
+        call DisplayMessage
+        mov ah, 0x00
+        int 16h  ; BIOS await keypress
+        int 19h  ; BIOS warning / restart
 
 ;
 ; Boot FAT32 reading code
@@ -186,6 +193,40 @@ DisplayMessage:
 .done:
     pop ax
     ret
+
+; gdt_start:
+; gdtr:
+;     dw gdt_end - gdt_start - 1
+;     dd gdt_start
+;     dw 0
+; gdt_code:
+;     dw 0xFFFF
+;     dw 0
+;     db 0
+;     db 10011010b
+;     db 11001111b
+;     db 0
+; gdt_data:
+;     dw 0xFFFF
+;     dw 0
+;     db 0
+;     db 10010010b
+;     db 11001111b
+;     db 0
+; gdt_end:
+; 
+; bits 32
+; 
+; __protected_mode:
+;     mov ax, 0x0010
+;     mov ds, ax
+;     mov es, ax
+;     mov fs, ax
+;     mov gs, ax
+;     mov ss, ax
+;     hlt
+;     jmp $
+
 
 file_not_found db 0x0d, 0x0a, 'KERNEL.BIN was not found!', 0dh, 0ah, 0
 
