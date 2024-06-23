@@ -43,8 +43,8 @@ for file in fat32_files:
 
 fat32_image.close()
 
-#with open("bin/fat32.img", "wb") as f:
-#	for i in range(1024 * 2):
-#		test = [((i + 1) // 256 ** x) % 256 for x in range(4)]
-#		f.write(bytearray(test))
-#		f.write(bytearray([0] * (512 * 32 - len(test))))
+# with open("bin/fat32.img", "wb") as f:
+# 	for i in range(1024 * 64):
+# 		test = [((i + 1) // 256 ** x) % 256 for x in range(4)]
+# 		f.write(bytearray(test))
+# 		f.write(bytearray([0] * (512 - len(test))))
