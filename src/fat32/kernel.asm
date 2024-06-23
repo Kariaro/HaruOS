@@ -43,53 +43,97 @@ ORG 0x0200
 %endmacro
 
 
-start:
+; start:
+; 
+; mov ax, start
+; print_hex_16
+; 
+; mov ax, test
+; print_hex_16
+; 
+; xor ax, ax
+; mov al, BYTE [test + 0]
+; print_hex_8
+; mov al, BYTE [test + 1]
+; print_hex_8
+; mov al, BYTE [test + 2]
+; print_hex_8
+; mov al, BYTE [test + 3]
+; print_hex_8
+; 
+; 
+; 
+; test:
 
-mov ax, start
-print_hex_16
+__kernel_start:
+    mov si, loaded_message
+    call print
+	call COMMAND_LINE
+	jmp $
 
-mov ax, test
-print_hex_16
+	; attempt to enter 32 bit protected mode
+	; cli              ; disable interrupts
+	; lgdt [gdtr]      ; load GDT register with start address of Global Descriptor Table
+	; mov  eax, cr0 
+	; or   al, 1       ; set PE (Protection Enable) bit in CR0 (Control Register 0)
+	; mov  cr0, eax
+	; jmp 0x0008:__kernel_protected_mode
 
-xor ax, ax
-mov al, BYTE [test + 0]
-print_hex_8
-mov al, BYTE [test + 1]
-print_hex_8
-mov al, BYTE [test + 2]
-print_hex_8
-mov al, BYTE [test + 3]
-print_hex_8
+print:
+    push ax
+    mov ah, 0eh
+.rep:
+    lodsb
+    cmp al, 0
+    je .done
+    int 10h
+    jmp .rep
+.done:
+    pop ax
+    ret
 
+; gdt_start:
+; gdtr:
+;     dw gdt_end - gdt_start - 1
+;     dd gdt_start
+;     dw 0
+; gdt_code:
+;     dw 0xFFFF
+;     dw 0
+;     db 0
+;     db 10011010b
+;     db 11001111b
+;     db 0
+; gdt_data:
+;     dw 0xFFFF
+;     dw 0
+;     db 0
+;     db 10010010b
+;     db 11001111b
+;     db 0
+; gdt_end:
+; 
+; 
+; __kernel_protected_mode:
+; 	mov eax, 0x07c0
+;     mov ds, eax 
+;     mov es, eax
+;     mov fs, eax
+;     mov gs, eax
+;     mov ss, eax
+; 	movzx esp, sp
+; 
+; 	mov   dword [0xB8000], 0x07690748
+; 	; call COMMAND_LINE
+;     jmp $
 
-
-test:
-jmp Main
 
 buffer   dd 2000h
 
 
-Main:
-    mov si, loaded_message
-    call print
-    
-    ; Enter x86 32 bit mode
-    ; call EnterProtectedMode
-    
-    call COMMAND_LINE
-    
-    ; mov bx, 512
-    ; mov cx, 128
-    ; call printhexdata
-    ; mov bx, [buffer] ; output
-    ; mov dx, 1        ; fragid
-    ; call READ_FILE_FROM_FRAGID
-    
-    ; mov si, [buffer]
-    ; call print
-    
-    hlt
-    jmp $
+; EAX
+kernel_fat32_read_file:
+
 
 MOVE_CURSOR_LEFT:
     pusha
@@ -305,7 +349,7 @@ READ_KEYBOARD_LINE:
 %endmacro
 
 COMMANDS:
-    .STARTMESSAGE db 'HC Operative System (Version 0.1) (Copyright HardCoded 2020)', 0dh, 0ah, 0
+    .STARTMESSAGE db 'Haru Operative System (Version 0.1) (Copyright HaruCoded 2024)', 0dh, 0ah, 0
     .LINEFEED     db 0dh, 0ah, 0
     .PROMPT       db '/:', 0
     
@@ -486,18 +530,6 @@ pchr:
     .pcr:
     ret
 
-print:
-    push ax
-    mov ah, 0eh
-.rep:
-    lodsb
-    cmp al, 0
-    je .done
-    int 10h
-    jmp .rep
-.done:
-    pop ax
-    ret
 
 printcx:
     push ax
@@ -515,73 +547,47 @@ printcx:
     ret
 
 
-
-GDT:
-    .NULL_DESC:
-        dd 0            ; null descriptor
-        dd 0
-
-    .CODE_DESC:
-        dw 0xFFFF       ; limit low
-        dw 0            ; base low
-        db 0            ; base middle
-        db 10011010b    ; access
-        db 11001111b    ; granularity
-        db 0            ; base high
-
-    .DATA_DESC:
-        dw 0xFFFF       ; data descriptor
-        dw 0            ; limit low
-        db 0            ; base low
-        db 10010010b    ; access
-        db 11001111b    ; granularity
-        db 0            ; base high
-
-GDTR:
-    .Limit dw (GDTR - GDT.NULL_DESC - 1) ; length of GDT
-    .Base  dd GDT.NULL_DESC              ; base of GDT
-
-%macro PAUSE_STEP 1
-    push eax
-    mov ah, 0eh
-    mov al, %1
-    int 10h
-    xor eax, eax
-    int 16h
-    pop eax
-%endmacro
-
-EnterProtectedMode:
-    cli
-    lgdt [GDTR]
-    PAUSE_STEP '0'
-    
-    mov eax, cr0
-    PAUSE_STEP '1'
-    
-    or eax, 1
-    PAUSE_STEP '2'
-    
-    mov cr0, eax
-    ; PAUSE_STEP '3'
-    int3
-    
-    .halt:
-        hlt
-        jmp .halt
-    ; jmp (GDT.CODE_DESC - GDT.NULL_DESC) : ProtectedMode
-
-BITS 32
-
-ProtectedMode:
-    mov ax, GDT.DATA_DESC - GDT.NULL_DESC
-    mov ds, ax
-    
-    ; This should crash
-    
-    mov si, loaded_message
-    call print
-    
-    .halt:
-        hlt
-        jmp .halt
+; %macro PAUSE_STEP 1
+;     push eax
+;     mov ah, 0eh
+;     mov al, %1
+;     int 10h
+;     xor eax, eax
+;     int 16h
+;     pop eax
+; %endmacro
+; 
+; EnterProtectedMode:
+;     cli
+;     lgdt [GDTR]
+;     PAUSE_STEP '0'
+;     
+;     mov eax, cr0
+;     PAUSE_STEP '1'
+;     
+;     or eax, 1
+;     PAUSE_STEP '2'
+;     
+;     mov cr0, eax
+;     ; PAUSE_STEP '3'
+;     int3
+;     
+;     .halt:
+;         hlt
+;         jmp .halt
+;     ; jmp (GDT.CODE_DESC - GDT.NULL_DESC) : ProtectedMode
+; 
+; BITS 32
+; 
+; ProtectedMode:
+;     mov ax, GDT.DATA_DESC - GDT.NULL_DESC
+;     mov ds, ax
+;     
+;     ; This should crash
+;     
+;     mov si, loaded_message
+;     call print
+;     
+;     .halt:
+;         hlt
+;         jmp .halt

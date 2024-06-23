@@ -1,191 +1,201 @@
-BITS 16
+bits 16
+org 0x0000
 
-jmp main
+jmp short START
+nop
 
-OEMLabel			db "HCFSBOOT"
-BytesPerSector		dw 512
-RootDirEntries		dw 32 ; (32 * 256 = 8196 = 16 sectors to read)
-SectorsPerTrack		dw 18
-Sides				dw 2
-FileSystem			db "HCFS 1.0"
+    OEMName             db  "HARUBOOT"
+    BytesPerSector      dw  0x0200
+    SectorsPerCluster   db  0x01
+    ReservedSectors     dw  0x0020
+    TotalFATs           db  0x02
+    MaxRootEntries      dw  0x0000
+;    MediaDescriptor     db  0xF8
+    SectorsPerFAT       dw  0x0000
+    SectorsPerTrack     dw  0x00FF
+    SectorsPerHead      dw  0x0002
+;    HiddenSectors       dd  0x00000000
+;    TotalSectors        dd  0x00000001
+;    Flags               dw  0x0000
+    BigSectorsPerFAT    dd  0x021C
+;    FSVersion           dw  0x0000
+    RootDirectoryStart  dd  0x00000002
 
-reset_floppy:
-	mov ah, 0
-	
-	mov dl, byte [BootDrive]
-	int 13h
-	ret
+;    FileSystem          db  "FAT32  "
 
-clsector:
-	push bx
-	push ax
-	
-	mov bx, ax
-	
-	mov dx, 0
-	div word [SectorsPerTrack]
-	inc dl
-	mov cl, dl ; [Sector is done]
-	mov ax, bx
-	mov dx, 0
-	div word [SectorsPerTrack]
-	mov dx, 0
-	div word [Sides]
-	mov dh, dl
-	mov ch, al
-	
-	pop ax
-	pop bx
-	
-	; mov dl, byte [BootDrive]
-	ret
-	
-; 
-; DX - fragId
-; 
-; sector = 18 + (fragId * 2)
-;  fragId = 0   <=>  [INVALID]
-;  fragId = 1   <=>  sector 20
-;  fragId = 2   <=>  sector 22
-read_fragment:
-	push bx
-	.rfl:
-	mov cx, dx
-	xor dx, dx
-	mov ax, 2
-	mul cx
-	add ax, 17
-	
-	call clsector
-	
-	mov dl, byte [BootDrive]
-	mov ax, 0202h ; Copy 2 segments [1 KB]
-	int 13h
-	
-	mov edx, dword [bx + 1020]
-	cmp edx, 0
-	jz .rfd
-	add bx, 1020
-	jmp .rfl
-	.rfd:
-	pop bx
-	ret
+START:
+    cli
+    ; adjust code frame to [07C0:0000]
+    mov ax, 0x07C0
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
 
-; Enable the 20:th bit of a register to be written
-enable_a20:
-    in al, 0x93
-    or al, 2
-    and al, ~1
-    out 0x92, al
+    ; create stack
+    mov ax, 0x0000
+    mov ss, ax
+    mov sp, 0xFFFF
+    sti
+
+    ; calculate sector where data should start
+    mov al, BYTE [TotalFATs]
+    mul WORD [BigSectorsPerFAT]
+    add ax, WORD [ReservedSectors]
+    mov WORD [datasector], ax
+
+    ; read 1st data cluster into memory (7C00:0200)
+    ; mov cx, WORD [SectorsPerCluster]
+    mov ax, WORD [RootDirectoryStart]
+    call ClusterLBA
+    mov cx, 0x0001
+    mov bx, 0x0200
+    call ReadFat32Sectors
+
+    ; find 'KERNEL.BIN' in the root entry
+    mov cx, 8
+    mov di, 0x0200 + 0x20
+    .FIND_KERNEL:
+        push cx
+        push di
+        mov si, BootFile
+        mov cx, 0x000B ; 11 characters
+        repe cmpsb
+        pop di
+        pop cx
+        je .KERNEL_FOUND
+        add di, 0x0020
+        loop .FIND_KERNEL
+        jmp .ERROR
+    .KERNEL_FOUND:
+        ; read kernel into code location
+        mov ax, WORD [di + 0x1A]
+        call ClusterLBA
+        mov cx, 0x0008
+        mov bx, 0x0200
+        call ReadFat32Sectors
+
+        ; enable 20th bit
+        in al, 0x93
+        or al, 2
+        and al, ~1
+        out 0x92, al
+
+        ; far jump into kernel
+        jmp 0x07c0:0x0200
+
+.ERROR:
+    mov si, file_not_found
+    call DisplayMessage
+    mov ah, 0x00
+    int 16h  ; BIOS await keypress
+    int 19h
+
+
+;
+; Boot FAT32 reading code
+;
+
+
+; Reads cx sectors from disk starting at ax into memory location es:bx
+ReadFat32Sectors:
+.MAIN:
+    ; 5 retries of reading
+    mov    di, 0x0005
+.SECTORLOOP:
+    push   ax
+    push   bx
+    push   cx
+    call   Convert_LBA_To_CHS
+    
+    ; Read one sector from the BIOS
+    mov    ah, 0x02    ; BIOS read sector
+    mov    al, 0x01    ; read one sector
+    mov    ch, BYTE [absoluteTrack]
+    mov    cl, BYTE [absoluteSector]
+    mov    dh, BYTE [absoluteHead]
+    mov    dl, BYTE [DriveNumber]
+    int    13h
+    jnc    .SUCCESS
+
+    ; Reset floppy
+    mov    ax, 0x0000  ; BIOS reset disk
+    int    13h
+    pop    cx
+    pop    bx
+    pop    ax
+    dec    di
+    jnz    .SECTORLOOP
+    int    18h
+.SUCCESS:
+    ; Print loading progress '.'
+    mov    ax, 0x0e2e
+    int    10h
+
+    ; Loop again
+    pop    cx
+    pop    bx
+    pop    ax
+    add    bx, WORD [BytesPerSector]
+    inc    ax
+    loop   .MAIN
     ret
 
-main:
-	cli
-	xor ax, ax
-	mov ss, ax
-	mov sp, 0xFFFF
-	sti
-	
-	; mov ax, 0x2401
-	; int 15h ; Enable A20 bit
-	; mov ax, 0x3
-	; int 10h ; Set VGA Text mode
-	
-	call enable_a20
-	
-	mov ax, 07C0h
-	mov ds, ax
-	mov es, ax
-	
-	; Read floppy into memory
-	; Write 8K to address: 7C00h
-	mov dh, 0
-	mov dl, [BootDrive]
-	mov bx, buffer
-	mov ah, 2
-	mov cl, 2
-	mov al, 1 ; Load 32 * 256 bytes [8 KB]
-	int 13h
-	
-	load_root:
-		call reset_floppy
-		jc load_root
-	loaded_root:
-		mov di, buffer
-		mov cx, 32 ; RootDirEntries
-		
-		; Move pointer to 0
-		mov ax, 0
-	search_root:
-		push cx
-		pop dx
-		mov si, BootFile
-		mov cx, 12
-		
-		; push si
-		; mov si, di
-		; call print
-		; pop si
-		
-		rep cmpsb
-		je found_file
-		
-		add ax, 100h
-		mov di, buffer
-		add di, ax
-		
-		push dx
-		pop cx
-		loop search_root
-		
-		mov si, file_not_found
-		call print
-		int 18h
-	found_file:
-		mov bx, buffer
-		add bx, ax
-	read_file:
-		mov ecx, dword [bx + 128] ; size
-		mov edx, dword [bx + 133] ; firstSegment
-		
-		; Load KERNEL.BIN into memory 
-		mov bx, buffer
-		call read_fragment
-		
-		; xor ax, ax
-		; int 16h ; Read key
-		
-		; Enter protected mode
-		; cli ; Clear interupt
-		; mov eax,cr0
-		; or eax,1
-		; mov cr0,eax
-		
-		; Jump to KERNEL.BIN
-		jmp 0x07c0:0x0200
-		
-	jmp $
 
-print:
-	push ax
-	mov ah, 0eh
+;*************************************************************************
+; PROCEDURE LBACHS
+; convert ax LBA addressing scheme to CHS addressing scheme
+; absolute sector = (logical sector / sectors per track) + 1
+; absolute head   = (logical sector / sectors per track) MOD number of heads
+; absolute track  = logical sector / (sectors per track * number of heads)
+;*****************************************************************************
+Convert_LBA_To_CHS:
+    xor     dx, dx                              ; prepare dx:ax for operation
+    div     WORD [SectorsPerTrack]              ; calculate
+    inc     dl                                  ; adjust for sector 0
+    mov     BYTE [absoluteSector], dl
+    xor     dx, dx                              ; prepare dx:ax for operation
+    div     WORD [SectorsPerHead]               ; calculate
+    mov     BYTE [absoluteHead], dl
+    mov     BYTE [absoluteTrack], al
+    ret 
+
+;*************************************************************************
+; PROCEDURE ClusterLBA
+; convert FAT cluster into LBA addressing scheme
+; FileStartSector = ((X − 2) * SectorsPerCluster(0x08))
+;*************************************************************************
+ClusterLBA:
+    sub     ax, 0x0002                          ; zero base cluster number
+    xor     cx, cx
+    mov     cl, BYTE [SectorsPerCluster]        ; convert byte to word
+    mul     cx
+    add     ax, WORD [datasector]               ; base data sector
+    ret
+
+
+DisplayMessage:
+    push ax
+    mov ah, 0eh
 .rep:
-	lodsb
-	cmp al, 0
-	je .done
-	int 10h
-	jmp .rep
+    lodsb
+    cmp al, 0
+    je .done
+    int 10h
+    jmp .rep
 .done:
-	pop ax
-	ret
+    pop ax
+    ret
 
+file_not_found db 0x0d, 0x0a, 'KERNEL.BIN was not found!', 0dh, 0ah, 0
 
-file_not_found db 'KERNEL.BIN was not found!', 0dh, 0ah, 0
+absoluteTrack           db 0
+absoluteSector          db 0
+absoluteHead            db 0
+datasector              dw 0
 
-BootFile  db 0ah, 'KERNEL.BIN', 0
-BootDrive db 1
+BootFile    db 'KERNEL  BIN', 0
+DriveNumber db 1
 
 times 510-($-$$) db 0
 dw 0xAA55
-
-buffer:
