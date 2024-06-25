@@ -24,7 +24,7 @@ entry:
     call pmode_to_real
 [bits 16]
     mov ah, 0eh
-    mov al, '!'
+    mov al, '#'
     int 10h
 
     call real_to_pmode
@@ -44,22 +44,8 @@ entry:
     hlt
 	jmp $
 
-[bits 16]
-print:
-    push ax
-    mov ah, 0eh
-.rep:
-    lodsb
-    cmp al, 0
-    je .done
-    int 10h
-    jmp .rep
-.done:
-    pop ax
-    ret
-
-[bits 16]
 ; jump from real to protected mode
+[bits 16]
 real_to_pmode:
     pop ax
     push 0x0000
@@ -126,6 +112,21 @@ pmode_to_real:
     sti
     jmp ax
 
+
+[bits 16]
+print:
+    push ax
+    mov ah, 0eh
+.rep:
+    lodsb
+    cmp al, 0
+    je .done
+    int 10h
+    jmp .rep
+.done:
+    pop ax
+    ret
+
 idtptr:
     .size: dw 0x3ff
     .offset: dd 0
@@ -186,3 +187,5 @@ gdt:
 
 loaded_message_rl db 0x0d, 0x0a, 'STAGE2.BIN was executed from memory', 0x0d, 0x0a, 0
 loaded_message_pm db 'STAGE2.BIN entered protected mode', 0
+
+times 512-($-$$)   db 0
