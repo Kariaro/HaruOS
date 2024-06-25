@@ -19,4 +19,4 @@ source .venv/scripts/activate
 python scripts/build-fs.py
 
 # Start by compiling the bootloader
-./nasm/nasm.exe -f bin src/bootloader.asm -o bin/bootloader.img
+./nasm/nasm.exe -f bin src/stage1.asm -o bin/bootloader.img

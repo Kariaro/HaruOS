@@ -593,3 +593,5 @@ printcx:
 ;     .halt:
 ;         hlt
 ;         jmp .halt
+
+times 1000000 db 0xff
