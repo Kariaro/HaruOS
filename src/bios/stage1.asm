@@ -1,7 +1,5 @@
 bits 16
-org 0x0000
-
-;  http://skelix.net/skelixos/tutorial02_en.html
+org 0x7C00
 
 jmp short boot_start
 nop
@@ -26,35 +24,41 @@ nop
 
 boot_start:
     cli
-    ; adjust code frame to [07C0:0000]
-    mov ax, 0x07C0
+    jmp 0x0000:fix_cs
+fix_cs:
+    ; adjust code frame to [0000:0000]
+    mov ax, 0x0000
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
 
-    ; create stack at [9000:FFFF]
+    ; create stack at [0000:FFFF]
     mov ax, 0x0000
     mov ss, ax
     mov sp, 0xFFFF
     sti
 
+    ; save boot drive
+    mov BYTE [BootDrive], dl
+
     ; calculate sector where data should start
+    xor ax, ax
     mov al, BYTE [TotalFATs]
     mul WORD [BigSectorsPerFAT]
     add ax, WORD [ReservedSectors]
     mov WORD [datasector], ax
 
-    ; read root directory cluster into memory [7C00:0200]
+    ; read root directory cluster into memory [0000:0600]
     mov ax, WORD [RootDirectoryStart]
     call ClusterLBA
     mov cx, 0x0001
-    mov bx, 0x0200
+    mov bx, 0x0600
     call ReadFat32Sectors
 
     ; find 'STAGE2.BIN' in the root entry
     mov cx, 8
-    mov di, 0x0200 + 0x20
+    mov di, 0x0600 + 0x20
     .FIND_STAGE2:
         push cx
         push di
@@ -76,48 +80,18 @@ boot_start:
 
         ; get size of file
         call CalculateFileSize
-        call PrintHex16
-        mov cx, ax
-        push cx
-
-        ; read stage2 into code location [0000:0200]
-        mov ax, 0x0000
-        ; mov ds, ax
-        mov es, ax
+        push ax
 
         ; figure out why this fails for more than one sector for second stage loader
         mov ax, WORD [di + 0x1A]
         call ClusterLBA
         pop cx
-        mov bx, 0x0200
+        mov bx, 0x0600
         call ReadFat32Sectors
 
-        ; move data segment to 0000
-        mov ax, 0x0000
-        mov ds, ax
-
-        ; mov dx, 0
-        ; mov cx, 0x0300 - 0x20
-        ; mov bx, 0x0200
-        ; .LOOP:
-        ;     mov al, BYTE [bx]
-        ;     call PrintHex8
-        ;     inc bx
-        ;     inc dx
-        ;     cmp dx, 32
-        ;     jnz .END
-        ;     mov dx, 0
-        ;     mov si, NewLine
-        ;     call DisplayMessage
-        ; .END:
-        ;     loop .LOOP
-        ; mov ah, 0x00
-        ; int 16h  ; BIOS await keypress
-        ; int 19h  ; BIOS warning / restart
-
-        ; jump into stage2 code located [0000:0200]
-        jmp 0x0000:0x0200
-        int 18h
+        ; jump into stage2 code located [0000:0600]
+        mov dl, BYTE [BootDrive]
+        jmp 0x0000:0x0600
     .STAGE2_NOT_FOUND:
         mov si, Stage2FileNotFound
         call DisplayMessage
@@ -128,33 +102,13 @@ boot_start:
 
 ; @param  di    contains the address of the fat32 file struct
 ; @return ax    the amount of sectors the file occupies
-; CalculateFileSize: ; (size + BytesPerSector - 1) / BytesPerSector
-;     cmp WORD [di + 0x1E], 0 ; check high 16 bits
-;     jnz .FAIL
-;     mov ax, WORD [di + 0x1C]
-;     add ax, WORD [BytesPerSector]
-;     jc .FAIL ; check low 16 bits, fail if overflow
-;     dec ax
-;     mov dx, 0
-;     div WORD [BytesPerSector]
-;     ret
-; 
-; .FAIL:
-;     mov si, Stage2FileTooLarge
-;     call DisplayMessage
-;     int 18h
-
-; @param  di    contains the address of the fat32 file struct
-; @return ax    the amount of sectors the file occupies
 CalculateFileSize: ; (size + BytesPerSector - 1) / BytesPerSector
     mov dx, WORD [di + 0x1E] ; high 16 bits
     mov ax, WORD [di + 0x1C] ; low 16 bits
     mov cx, WORD [BytesPerSector]
     dec cx
     add ax, cx
-    setc cl
-    xor ch, ch
-    add dx, cx
+    adc dx, 0 ; add the carry if (ax + cx) overflowed
     div WORD [BytesPerSector]
     ret
 
@@ -168,7 +122,6 @@ ReadFat32Sectors:
     push   ax
     push   bx
     push   cx
-    ; call PrintHex16
     ; .Convert_LBA_To_CHS:
         ; convert ax LBA addressing scheme to CHS addressing scheme
         ; absolute sector = (logical sector / sectors per track) + 1
@@ -183,8 +136,6 @@ ReadFat32Sectors:
         mov     dh, dl  ; head
         mov     ch, al  ; track
 
-    mov ah, 0x00
-    int 16h  ; BIOS await keypress
     ; Read one sector from the BIOS
     mov    ah, 0x02    ; BIOS read sector
     mov    al, 0x01    ; read one sector
@@ -224,68 +175,91 @@ ReadFat32Sectors:
 ; FileStartSector = ((X − 2) * SectorsPerCluster(0x08))
 ;*************************************************************************
 ClusterLBA:
-    sub     ax, 0x0002                          ; zero base cluster number
-    xor     cx, cx
-    mov     cl, BYTE [SectorsPerCluster]        ; convert byte to word
-    mul     cx
-    add     ax, WORD [datasector]               ; base data sector
+    sub    ax, 0x0002                          ; zero base cluster number
+    xor    cx, cx
+    mov    cl, BYTE [SectorsPerCluster]        ; convert byte to word
+    mul    cx
+    add    ax, WORD [datasector]               ; base data sector
     ret
 
 
 DisplayMessage:
-    push ax
-    mov ah, 0eh
+    push   ax
+    mov    ah, 0eh
 .rep:
     lodsb
-    cmp al, 0
-    je .done
-    int 10h
-    jmp .rep
+    cmp    al, 0
+    je     .done
+    int    10h
+    jmp    .rep
 .done:
-    pop ax
+    pop    ax
     ret
 
 
 ; Print a hexadecimal value
 ; ax value
 PrintHex16:
-    push ax
-    push cx
-    mov cx, ax
-    shr ax, 8
-    call PrintHex8
-    mov ax, cx
-    call PrintHex8
-    mov al, 0x20
-    mov ah, 0eh
-    int 10h
-    pop cx
-    pop ax
+    push   ax
+    push   cx
+    mov    cx, ax
+    shr    ax, 8
+    call   PrintHex8
+    mov    ax, cx
+    call   PrintHex8
+    mov    al, 0x20
+    mov    ah, 0eh
+    int    10h
+    pop    cx
+    pop    ax
     ret
 
 PrintHex8:
-    push ax
-    push cx
-    mov cx, ax
-    mov ax, cx
-    shr ax, 4
-    call .DIGIT
-    mov ax, cx
-    call .DIGIT
-    pop cx
-    pop ax
+    push   ax
+    push   cx
+    mov    cx, ax
+    mov    ax, cx
+    shr    ax, 4
+    call   .DIGIT
+    mov    ax, cx
+    call   .DIGIT
+    pop    cx
+    pop    ax
     ret
 .DIGIT:
-    and al, 15
-    cmp al, 10
-    jc .hexa
-    add al, 0x07
-    .hexa:
-    add al, 0x30
-    .hexr:
-    mov ah, 0eh
-    int 10h
+    and    al, 0x0f
+    add    al, 0x30
+    cmp    al, 0x3a
+    jc     .hexa
+    add    al, 0x07
+.hexa:
+    mov    ah, 0eh
+    int    10h
     ret
+
+; PrintHex8:
+;     push   ax
+;     push   cx
+; 
+;     shrd   ax, cx, 4
+;     call   .DIGIT
+; 
+;     mov    ax, cx
+;     call   .DIGIT
+; 
+;     pop    cx
+;     pop    ax
+;     ret
+; .DIGIT:
+;     and    ax, 0x000f
+;     add    ax, 0x0e30
+;     cmp    ax, 0x0e3a
+;     jc     .skip
+;     add    al, 0x07
+; .skip:
+;     int    10h
+;     ret
+
 
 datasector         dw 0
 
@@ -294,6 +268,7 @@ Stage2FileNotFound db 0x0d, 0x0a, 'STAGE2.BIN was not found!',  0x0d, 0x0a, 0
 Stage2File         db 'STAGE2  BIN', 0
 NewLine            db 0x0d, 0x0a, 0
 DriveNumber        db 1
+BootDrive          db 0
 
 times 510-($-$$)   db 0
 dw 0xAA55

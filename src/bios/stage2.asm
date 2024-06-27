@@ -1,7 +1,7 @@
 ;;; STAGE2.BIN
 
 bits 16
-ORG 0x0200
+org 0x0600
 
 entry:
     mov si, loaded_message_rl
