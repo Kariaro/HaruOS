@@ -81,8 +81,9 @@ fix_cs:
         ; get size of file
         call CalculateFileSize
         push ax
+        call PrintHex16
 
-        ; figure out why this fails for more than one sector for second stage loader
+        ; read sectors
         mov ax, WORD [di + 0x1A]
         call ClusterLBA
         pop cx

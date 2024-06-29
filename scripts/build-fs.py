@@ -28,6 +28,7 @@ fat32_files = [f for f in listdir(fat32_path) if isfile(join(fat32_path, f))]
 
 fat32_image = fs.open_fs("fat://bin/fat32.img")
 fs.copy.copy_file("bin", "stage2.bin", fat32_image, "STAGE2.BIN")
+fs.copy.copy_file("bin/gcc", "kernel.o", fat32_image, "KERNEL.BIN")
 
 for file in fat32_files:
 	# if file.endswith('.bin'):
@@ -35,7 +36,7 @@ for file in fat32_files:
 	if file.endswith('.asm'):
 		result_path = "bin/fat32/" + Path(file).stem + ".bin"
 		result_name = Path(file).stem + ".bin"
-		subprocess.run(["nasm/nasm.exe", "-f", "bin", fat32_path + "/" + file, "-o", result_path])
+		subprocess.run([".tools/nasm/nasm", "-f", "bin", fat32_path + "/" + file, "-o", result_path])
 	else:
 		result_path = "bin/fat32/" + file
 		result_name = file

@@ -1,50 +1,15 @@
-;;; STAGE2.BIN
+; Code for jumping into and from protected mode
 
-bits 16
-org 0x0600
+%define CODE_SEG_32     0x0008
+%define DATA_SEG_32     0x0010
+%define CODE_SEG_16     0x0018
+%define DATA_SEG_16     0x0020
+%define CODE_SEG_64     0x0028
+%define DATA_SEG_64     0x0030
 
-entry:
-    mov si, loaded_message_rl
-    call print
+%define PAGE_PRESENT    (1 << 0)
+%define PAGE_WRITE      (1 << 1)
 
-    call real_to_pmode
-[bits 32]
-    
-    mov esi, loaded_message_pm
-    mov ebx, 0xb8000 + (160 * 2)
-    .loop1:
-        lodsb     
-        mov BYTE [ebx], al
-        cmp al, 0
-        je .end1
-        add ebx, 2
-        jmp .loop1
-    .end1:
-
-    call pmode_to_real
-[bits 16]
-    mov ah, 0eh
-    mov al, '#'
-    int 10h
-
-    call real_to_pmode
-[bits 32]
-    mov esi, loaded_message_pm
-    mov ebx, 0xb8000 + (160 * 4)
-    .loop2:
-        lodsb     
-        mov BYTE [ebx], al
-        cmp al, 0
-        je .end2
-        add ebx, 2
-        jmp .loop2
-    .end2:
-
-
-    hlt
-	jmp $
-
-; jump from real to protected mode
 [bits 16]
 real_to_pmode:
     pop ax
@@ -61,10 +26,10 @@ real_to_pmode:
     mov cr0, eax
 
     ; jump to protected mode
-    jmp 0x08:.in_pmode
+    jmp CODE_SEG_32:.in_pmode
 [bits 32]
 .in_pmode:
-    mov ax, 0x10
+    mov ax, DATA_SEG_32
     mov ds, ax
     mov es, ax
     mov fs, ax
@@ -72,15 +37,16 @@ real_to_pmode:
     mov ss, ax
     ret
 
+
 ; enter real mode
 [bits 32]
 pmode_to_real:
     cli
-    jmp 0x18:.pm16
+    jmp CODE_SEG_16:.pm16
 [bits 16]
 .pm16:
     ; Use 16-bit data selectors
-    mov ax, 0x20
+    mov ax, DATA_SEG_16
     mov ds,ax
     mov es,ax
     mov fs,ax
@@ -112,20 +78,8 @@ pmode_to_real:
     sti
     jmp ax
 
+    
 
-[bits 16]
-print:
-    push ax
-    mov ah, 0eh
-.rep:
-    lodsb
-    cmp al, 0
-    je .done
-    int 10h
-    jmp .rep
-.done:
-    pop ax
-    ret
 
 idtptr:
     .size: dw 0x3ff
@@ -183,9 +137,20 @@ gdt:
     db 10010010b
     db 10001111b
     db 0x00
+.CODE_64: ; offset 0x28
+    ; gdt_entry(0xFFFFF, 0x00000000, 10011010b, 1010b)
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 10011010b
+    db 10101111b
+    db 0x00
+.DATA_64: ; offset 0x30
+    ; gdt_entry(0xFFFFF, 0x00000000, 10010010b, 1010b)
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 10010010b
+    db 10101111b
+    db 0x00
 .END:
-
-loaded_message_rl db 0x0d, 0x0a, 'STAGE2.BIN was executed from memory', 0x0d, 0x0a, 0
-loaded_message_pm db 'STAGE2.BIN entered protected mode', 0
-
-times 512-($-$$)   db 0
