@@ -15,7 +15,7 @@ https://github.com/lordmilko/i686-elf-tools/releases/tag/13.2.0
 
 ## Building
 
-```shmingw64-x86_64-gcc-g++ 
+```sh
 ./scripts/build.sh
 ```
 

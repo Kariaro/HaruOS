@@ -6,12 +6,16 @@ org 0x0600
 jmp entry
 
 %include "lm_pm_code.asm"
-
+%include "read_sectors.asm"
+%include "load_kernel.asm"
 
 [bits 16]
 entry:
     mov si, loaded_message_rl
     call print
+
+    ; Read KERNEL.BIN at [0x0010_0000]
+    call LOAD_KERNEL_ASM
 
     ; Enter protected mode
     call real_to_pmode
@@ -36,7 +40,7 @@ entry:
     ; Enter long mode
     ; =======================================
 
-    mov edi, 0x9000
+    mov edi, 0x90000
 
     push edi
     mov ecx, 0x1000
@@ -105,179 +109,65 @@ entry:
     ;lgdt [gdtptr]                     ; Load GDT.Pointer defined below
     jmp CODE_SEG_64:LongMode          ; Load CS with 64 bit segment and flush the instruction cache
 
-%include "read_sectors.asm"
-
-load_kernel_data:
-.BPB_SecPerClus:
-    db 0
-.data_sector:
-    dw 0x0000
-.size_high:
-    dw 0x0000
-.size_low:
-    dw 0x0000
-.lba:
-    dw 0x0000
-.kernel_file:
-    db 'KERNEL  BIN', 0
-
-[bits 32]
-load_kernel:
-    call pmode_to_real
-[bits 16]
-    ; Destination [0x10000]
-    mov ax, 0x1000 ; destination high
+[bits 64]
+LongMode:
+    mov ax, DATA_SEG_64
+    mov ds, ax
     mov es, ax
-    mov bx, 0x0000 ; destination low
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+
+    ; Blank out the screen to a blue color.
+    ; mov edi, 0xB8000
+    ; mov rcx, 500                      ; Since we are clearing uint64_t over here, we put the count as Count/4.
+    ; mov rax, 0x1F201F201F201F20       ; Set the value to set the screen to: Blue background, white foreground, blank spaces.
+    ; rep stosq                         ; Clear the entire screen.
+    
+ 
+    ; Display "Hello World!"
+    mov edi, 0x00b8000
+    mov rax, 0x1F6C1F6C1F651F48
+    mov [edi +  0], rax
+    mov rax, 0x1F6F1F571F201F6F
+    mov [edi +  8], rax
+    mov rax, 0x1F211F641F6C1F72
+    mov [edi + 16], rax
+
+    ; We should allocate more memory for the kernel 
+    jmp 0x0100000
+
+    call longmode_to_real
+[bits 16]
+    mov ax, 0x0e24
+    int 10h
+
+    mov ax, sp
+    call PrintHex16
+
+    mov ax, 0x0000 ; destination high
+    mov es, ax
+    mov bx, 0x8000 ; destination low
     mov dx, 0x0000 ; lba high
     mov ax, 0x0000 ; lba low
     mov di, 1      ; kernel is on drive 1
     mov cx, 1      ; read one sector
     call ReadSectors
-    mov bx, 0x0000
 
-    ; calculate root dir
-    xor ax, ax
-    mov al, BYTE [es:bx]
-    call PrintHex16             ; BPB_NumFATs
-    mov ax, WORD [es:bx + 0x24]
-    call PrintHex16             ; BPB_FATSz32
-    mov ax, WORD [es:bx + 0x0E]
-    call PrintHex16             ; BPB_RsvdSecCnt
-
-    ; BPB_SecPerClus
-    mov al, BYTE [es:bx + 0x0D]
-    mov BYTE [load_kernel_data.BPB_SecPerClus], al
-
-    ; calculate data sector
-    xor ax, ax
-    mov al, BYTE [es:bx + 0x10]      ; BPB_NumFATs    (always 2)
-    mul WORD [es:bx + 0x24]          ; BPB_FATSz32
-    add ax, WORD [es:bx + 0x0E]      ; BPB_RsvdSecCnt
-    mov WORD [load_kernel_data.data_sector], ax
-    call PrintHex16
-
-    ; calculate root directory first cluster 
-    mov    ax, WORD [es:bx + 0x2C]   ; BPB_RootClus
-    sub    ax, 0x0002
-    xor    cx, cx
-    mov    cl, BYTE [load_kernel_data.BPB_SecPerClus]
-    mul    cx
-    add    ax, WORD [load_kernel_data.data_sector]
-    push   ax
-
-    ; read first root directory cluster
-    ; Destination [0x10000]
-    mov    ax, 0x1000 ; destination high
-    mov    es, ax
-    mov    bx, 0x0000 ; destination low
-    mov    di, 1      ; kernel is on drive 1
-    mov    cx, 1      ; read one sector
-    mov    dx, 0x0000 ; lba high
-    pop    ax         ; lba low
-    call ReadSectors
-    mov bx, 0x0000
-    
-    ; mov dx, 0
-    ; mov cx, 0x0200
-    ; mov bx, 0x0000
-    ; .LOOP:
-    ;     mov al, BYTE [es:bx]
-    ;     call PrintHex8
-    ;     inc bx
-    ;     inc dx
-    ;     cmp dx, 32
-    ;     jnz .END
-    ;     mov dx, 0
-    ;     mov ax, 0x0e0d
-    ;     int 10h
-    ;     mov ax, 0x0e0a
-    ;     int 10h
-    ; .END:
-    ;     loop .LOOP
-
-    ; find kernel
-    mov cx, 8
-    mov di, 0x0000 + 0x20
-.FIND_KERNEL:
-    push   cx
-    push   di
-    mov    si, load_kernel_data.kernel_file
-    mov    cx, 0x000B ; 11 characters
-    repe   cmpsb
-    pop    di
-    pop    cx
-    je     .KERNEL_FOUND
-    add    di, 0x0020
-    loop   .FIND_KERNEL
-    ; Failed to find kernel
-    mov ax, 0x0e24 ; '$'
+    mov ax, 0x0e24
     int 10h
-    int 18h
-.KERNEL_FOUND:
-    ; Read kernel size
-    mov    ax, [es:di + 0x1E]
-    mov    WORD [load_kernel_data.size_high], ax
-    mov    ax, [es:di + 0x1C]
-    mov    WORD [load_kernel_data.size_low], ax
+    call real_to_longmode
+[bits 64]
+    mov edi, 0x00b8000
+    mov rax, 0x0F210F640F6C0F72
+    mov [edi + 16], rax
 
-    ; Calculate kernel disk lba
-    mov    ax, [es:di + 0x1A]
-    sub    ax, 0x0002
-    xor    cx, cx
-    mov    cl, BYTE [load_kernel_data.BPB_SecPerClus]
-    mul    cx
-    add    ax, WORD [load_kernel_data.data_sector]
-    mov    WORD [load_kernel_data.lba], ax
-    call   PrintHex16
-
-.READ_LOOP:
-    ; Sectors to read (32 kb)
-    mov dx, WORD [load_kernel_data.size_high] ; high 16 bits
-    mov ax, WORD [load_kernel_data.size_low]  ; low 16 bits
-    cmp dx, 0
-    jg .SECTOR_LARGE
-.SECTOR_SMALL:
-    add ax, 0x1FF
-    adc dx, 0
-    mov cx, 0x200
-    div cx
-    mov cx, ax
-    cmp dx, 0x40
-    cmp ax, dx
-    cmova cx, dx
-    jmp .READ_LOOP_END
-.SECTOR_LARGE:
-    mov cx, 0x40 ; 64
-.READ_LOOP_END:
-    mov ax, cx
-    call PrintHex16
-
-    ; Destination [0x10000]
-    mov    di, 1      ; kernel is on drive 1
-    mov    ax, 0x1000 ; destination high
-    mov    es, ax
-    mov    bx, 0x0000 ; destination low
-    mov    dx, 0x0000 ; lba high
-    mov    ax, WORD [load_kernel_data.lba]
-    call ReadSectors
-    mov bx, 0x0000
-
-    call real_to_pmode
-[bits 32]
-    mov cx,  0x
-    mov esi, 0x10000
-    mov edi, 0xC000_0000
-
-    
-
-
-    mov    ax, 0x0e21 ; '!'
-    int    10h
-    int    18h
 
     hlt
     jmp $
+
+
+
 
 [bits 16]
 print:
@@ -330,61 +220,6 @@ PrintHex8:
     mov    ah, 0eh
     int    10h
     ret
-
-
-[bits 64]
-LongMode:
-    mov ax, DATA_SEG_64
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    mov ss, ax
-
-    ; Blank out the screen to a blue color.
-    ; mov edi, 0xB8000
-    ; mov rcx, 500                      ; Since we are clearing uint64_t over here, we put the count as Count/4.
-    ; mov rax, 0x1F201F201F201F20       ; Set the value to set the screen to: Blue background, white foreground, blank spaces.
-    ; rep stosq                         ; Clear the entire screen.
-    
- 
-    ; Display "Hello World!"
-    mov edi, 0x00b8000
-    mov rax, 0x1F6C1F6C1F651F48
-    mov [edi +  0], rax
-    mov rax, 0x1F6F1F571F201F6F
-    mov [edi +  8], rax
-    mov rax, 0x1F211F641F6C1F72
-    mov [edi + 16], rax
-
-    call longmode_to_real
-[bits 16]
-    mov ax, 0x0e24
-    int 10h
-
-    mov ax, sp
-    call PrintHex16
-
-    mov ax, 0x0000 ; destination high
-    mov es, ax
-    mov bx, 0x8000 ; destination low
-    mov dx, 0x0000 ; lba high
-    mov ax, 0x0000 ; lba low
-    mov di, 1      ; kernel is on drive 1
-    mov cx, 1      ; read one sector
-    call ReadSectors
-
-    mov ax, 0x0e24
-    int 10h
-    call real_to_longmode
-[bits 64]
-    mov edi, 0x00b8000
-    mov rax, 0x0F210F640F6C0F72
-    mov [edi + 16], rax
-
-
-    hlt
-    jmp $
 
 
 loaded_message_rl db 0x0d, 0x0a, 'STAGE2.BIN was executed from memory', 0x0d, 0x0a, 0

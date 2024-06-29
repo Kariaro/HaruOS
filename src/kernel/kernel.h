@@ -30,7 +30,7 @@ extern "C"
 {
 #endif
 
-extern uint8_t* read_disk_sector(uint8_t a_drive, uint64_t a_lhb);
+// extern uint8_t* read_disk_sector(uint8_t a_drive, uint64_t a_lhb);
 
 extern void kernel_main(uint8_t a_bootDrive);
 

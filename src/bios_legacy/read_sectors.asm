@@ -70,8 +70,6 @@ __ReadSectorsCHS:
     mov    al, 0x01    ; read one sector
     mov    dl, BYTE [DiskDriveNumber]
     int    13h
-    setc   al
-    call   PrintHex8
     jnc    .SUCCESS
 
     ; Reset floppy
@@ -86,8 +84,6 @@ __ReadSectorsCHS:
     jnz    .SECTORLOOP
     int    18h
 .SUCCESS:
-    mov    ax, 0x0e27  ; Print '!'
-    int    10h
     ; Loop again
     pop    cx
     pop    bx
@@ -95,8 +91,6 @@ __ReadSectorsCHS:
     add    bx, 0x200
     inc    ax
     loop   .MAIN
-    mov    ax, 0x0e26  ; Print '!'
-    int    10h
     ret
 
 ; Read sectors using the disk extension protocol
