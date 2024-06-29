@@ -14,19 +14,15 @@ ReadSectors:
 
     mov    ax, 0x4100  ; BIOS check if extended mode is enabled
     mov    bx, 0x55AA
-	mov    dl, 0x80
+	mov    dx, di
+	; mov    dl, 0x80
 	int    13h
 
 	pop    dx
 	pop    bx
 	pop    ax
-	jnc    .EXTENDED
-.NOT_EXTENDED:
-	call __ReadSectorsCHS
-	ret
-.EXTENDED:
-    call __ReadSectorsExtended
-	ret
+	jnc    __ReadSectorsExtended
+	jmp    __ReadSectorsCHS
 
 ; Read sectors using CHS format
 __ReadSectorsCHS:
@@ -59,12 +55,23 @@ __ReadSectorsCHS:
         div     WORD [DiskSectorsPerHead]           ; calculate
         mov     dh, dl  ; head
         mov     ch, al  ; track
+	
+	; mov al, cl
+	; call PrintHex8
+	; mov al, dh
+	; call PrintHex8
+	; mov al, ch
+	; call PrintHex8
+	; mov al, BYTE [DiskDriveNumber]
+	; call PrintHex8
 
     ; Read one sector from the BIOS
     mov    ah, 0x02    ; BIOS read sector
     mov    al, 0x01    ; read one sector
     mov    dl, BYTE [DiskDriveNumber]
     int    13h
+    setc   al
+    call   PrintHex8
     jnc    .SUCCESS
 
     ; Reset floppy
@@ -79,6 +86,8 @@ __ReadSectorsCHS:
     jnz    .SECTORLOOP
     int    18h
 .SUCCESS:
+    mov    ax, 0x0e27  ; Print '!'
+    int    10h
     ; Loop again
     pop    cx
     pop    bx
@@ -86,6 +95,8 @@ __ReadSectorsCHS:
     add    bx, 0x200
     inc    ax
     loop   .MAIN
+    mov    ax, 0x0e26  ; Print '!'
+    int    10h
     ret
 
 ; Read sectors using the disk extension protocol

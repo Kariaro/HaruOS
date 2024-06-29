@@ -83,7 +83,7 @@ fix_cs:
         push ax
         call PrintHex16
 
-        ; read sectors
+        ; read stage2.bin data
         mov ax, WORD [di + 0x1A]
         call ClusterLBA
         pop cx

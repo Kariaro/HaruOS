@@ -36,44 +36,44 @@ entry:
     ; Enter long mode
     ; =======================================
 
-    mov edi, 0x4000
+    mov edi, 0x9000
 
-    push di
+    push edi
     mov ecx, 0x1000
     xor eax, eax
     cld
     rep stosd
-    pop di
+    pop edi
 
     ; Build the Page Map Level 4
     ; es:di points to the Page Map Level 4 table
-    lea eax, [es:di + 0x1000]               ; Put the address of the Page Directory Pointer Table in to EAX
+    lea eax, [es:edi + 0x1000]              ; Put the address of the Page Directory Pointer Table in to EAX
     or eax, PAGE_PRESENT | PAGE_WRITE       ; Or EAX with the flags - present flag, writable flag
-    mov DWORD [es:di + 0x000], eax          ; Store the value of EAX as the first PML4E
+    mov DWORD [es:edi + 0x000], eax         ; Store the value of EAX as the first PML4E
 
     ; Build the Page Directory Pointer Table
-    lea eax, [es:di + 0x2000]               ; Put the address of the Page Directory in to EAX
+    lea eax, [es:edi + 0x2000]              ; Put the address of the Page Directory in to EAX
     or eax, PAGE_PRESENT | PAGE_WRITE       ; Or EAX with the flags - present flag, writable flag
-    mov DWORD [es:di + 0x1000], eax         ; Store the value of EAX as the first PDPTE
+    mov DWORD [es:edi + 0x1000], eax        ; Store the value of EAX as the first PDPTE
     
     ; Build the Page Directory
-    lea eax, [es:di + 0x3000]               ; Put the address of the Page Table in to EAX
+    lea eax, [es:edi + 0x3000]              ; Put the address of the Page Table in to EAX
     or eax, PAGE_PRESENT | PAGE_WRITE       ; Or EAX with the flags - present flag, writeable flag
-    mov DWORD [es:di + 0x2000], eax         ; Store to value of EAX as the first PDE
+    mov DWORD [es:edi + 0x2000], eax        ; Store to value of EAX as the first PDE
 
-    push di                                 ; Save DI for the time being
-    lea di, [di + 0x3000]                   ; Point DI to the page table
+    push edi                                ; Save DI for the time being
+    lea edi, [edi + 0x3000]                 ; Point DI to the page table
     mov eax, PAGE_PRESENT | PAGE_WRITE      ; Move the flags into EAX - and point it to 0x0000
 
     ; Build the Page Table
 .LoopPageTable:
-    mov DWORD [es:di], eax
+    mov DWORD [es:edi], eax
     add eax, 0x1000
-    add di, 8
+    add edi, 8
     cmp eax, 0x200000                 ; If we did all 2MiB, end
     jb .LoopPageTable
 
-    pop di                            ; Restore DI
+    pop edi                            ; Restore DI
 
     ; Disable IRQs
     mov al, 0xFF                      ; Out 0xFF to 0xA1 and 0x21 to disable all IRQs
@@ -102,7 +102,7 @@ entry:
     or ebx, 0x80000001                ; - by enabling paging and protection simultaneously
     mov cr0, ebx
 
-    lgdt [gdtptr]                     ; Load GDT.Pointer defined below
+    ;lgdt [gdtptr]                     ; Load GDT.Pointer defined below
     jmp CODE_SEG_64:LongMode          ; Load CS with 64 bit segment and flush the instruction cache
 
 %include "read_sectors.asm"
@@ -331,6 +331,7 @@ PrintHex8:
     int    10h
     ret
 
+
 [bits 64]
 LongMode:
     mov ax, DATA_SEG_64
@@ -339,23 +340,48 @@ LongMode:
     mov fs, ax
     mov gs, ax
     mov ss, ax
+
     ; Blank out the screen to a blue color.
-    mov edi, 0xB8000
-    ;mov rcx, 500                      ; Since we are clearing uint64_t over here, we put the count as Count/4.
-    ;mov rax, 0x1F201F201F201F20       ; Set the value to set the screen to: Blue background, white foreground, blank spaces.
-    ;rep stosq                         ; Clear the entire screen. 
+    ; mov edi, 0xB8000
+    ; mov rcx, 500                      ; Since we are clearing uint64_t over here, we put the count as Count/4.
+    ; mov rax, 0x1F201F201F201F20       ; Set the value to set the screen to: Blue background, white foreground, blank spaces.
+    ; rep stosq                         ; Clear the entire screen.
+    
  
     ; Display "Hello World!"
-    mov edi, 0x00b8000              
-    
-    mov rax, 0x1F6C1F6C1F651F48    
-    mov [edi],rax
-    
+    mov edi, 0x00b8000
+    mov rax, 0x1F6C1F6C1F651F48
+    mov [edi +  0], rax
     mov rax, 0x1F6F1F571F201F6F
-    mov [edi + 8], rax
-
+    mov [edi +  8], rax
     mov rax, 0x1F211F641F6C1F72
     mov [edi + 16], rax
+
+    call longmode_to_real
+[bits 16]
+    mov ax, 0x0e24
+    int 10h
+
+    mov ax, sp
+    call PrintHex16
+
+    mov ax, 0x0000 ; destination high
+    mov es, ax
+    mov bx, 0x8000 ; destination low
+    mov dx, 0x0000 ; lba high
+    mov ax, 0x0000 ; lba low
+    mov di, 1      ; kernel is on drive 1
+    mov cx, 1      ; read one sector
+    call ReadSectors
+
+    mov ax, 0x0e24
+    int 10h
+    call real_to_longmode
+[bits 64]
+    mov edi, 0x00b8000
+    mov rax, 0x0F210F640F6C0F72
+    mov [edi + 16], rax
+
 
     hlt
     jmp $
