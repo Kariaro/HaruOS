@@ -19,6 +19,7 @@ https://github.com/lordmilko/i686-elf-tools/releases/tag/13.2.0
 ./scripts/build.sh
 ```
 
+
 This will generate a FAT32 image with the first and second stage bootloaders
 
 
@@ -28,6 +29,13 @@ Steps of STAGE1
 1. Set CS to `0x0000:0x7C00`
 1. Set stack to `0x0000:0xFFFF`
 1. Read `STAGE2.BIN` to `0x0000:0x0600`
+
+```
+pmode read kernel to  -> 0x8000_0000 (2gb) 
+long mode page mem    -> 0x8000_0000 (2gb)
+write elf kernel to   -> 0xffff_ffff_8000_0000 (2gb) kernel 
+jump to kernel        -> 0xffff_ffff_8000_0000
+```
 
 Steps of STAGE2
 1. Enter protected mode

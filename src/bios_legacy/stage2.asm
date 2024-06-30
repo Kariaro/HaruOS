@@ -123,8 +123,7 @@ LongMode:
     ; mov rcx, 500                      ; Since we are clearing uint64_t over here, we put the count as Count/4.
     ; mov rax, 0x1F201F201F201F20       ; Set the value to set the screen to: Blue background, white foreground, blank spaces.
     ; rep stosq                         ; Clear the entire screen.
-    
- 
+
     ; Display "Hello World!"
     mov edi, 0x00b8000
     mov rax, 0x1F6C1F6C1F651F48

@@ -116,6 +116,17 @@ LOAD_KERNEL_ASM:
     int    10h
     mov    ax, 0x0e0a
     int    10h
+; =====================================================
+; if(size_high != 0) {
+;     // fallthrough
+; } else if(size_low != 0) {
+;     if(size_low < 0x200) size_low = 0x200
+; } else {
+;     goto DONE // done reading
+; }
+; size_high -= (size_low < 0x200)
+; size_low  -= 0x200
+; =====================================================
 .READ:
     mov    dx, WORD [.size_high] ; high 16 bits
     mov    ax, WORD [.size_low]  ; low 16 bits
