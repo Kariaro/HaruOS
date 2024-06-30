@@ -238,30 +238,6 @@ PrintHex8:
     int    10h
     ret
 
-; PrintHex8:
-;     push   ax
-;     push   cx
-; 
-;     shrd   ax, cx, 4
-;     call   .DIGIT
-; 
-;     mov    ax, cx
-;     call   .DIGIT
-; 
-;     pop    cx
-;     pop    ax
-;     ret
-; .DIGIT:
-;     and    ax, 0x000f
-;     add    ax, 0x0e30
-;     cmp    ax, 0x0e3a
-;     jc     .skip
-;     add    al, 0x07
-; .skip:
-;     int    10h
-;     ret
-
-
 datasector         dw 0
 
 Stage2FileTooLarge db 0x0d, 0x0a, 'STAGE2.BIN file too large!', 0x0d, 0x0a, 0

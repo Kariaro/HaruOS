@@ -7,15 +7,43 @@ jmp entry
 
 %include "lm_pm_code.asm"
 %include "read_sectors.asm"
-%include "load_kernel.asm"
+%include "load_file.asm"
+
+kernel_file:
+    db 'KERNEL  BIN', 0
 
 [bits 16]
 entry:
     mov si, loaded_message_rl
     call print
 
+    mov si, kernel_file  ; file to read
+    mov dl, 1            ; drive to read from
+    push WORD 0xC000     ; 0010 ....
+    push WORD 0x0000     ; .... 0000
+    call LoadFileFAT32
+    jnc .load_kernel
+    mov ax, 0x0e24 ; '$'
+    int 10h
+    int 18h
+.load_kernel:
+
     ; Read KERNEL.BIN at [0x0010_0000]
-    call LOAD_KERNEL_ASM
+    ; call LOAD_KERNEL_ASM
+
+    mov al, BYTE [bx + 3]
+    call PrintHex8
+    mov al, BYTE [bx + 2]
+    call PrintHex8
+    mov al, BYTE [bx + 1]
+    call PrintHex8
+    mov al, BYTE [bx + 0]
+    call PrintHex8
+    
+    mov ax, 0x0e24
+    int 10h
+    mov ah, 0x00
+    int    16h  ; BIOS await keypress
 
     ; Enter protected mode
     call real_to_pmode
@@ -31,11 +59,6 @@ entry:
         add ebx, 2
         jmp .loop1
     .end1:
-
-    ; Read kernel to [0xC0000000]
-    ; mov edi, 0xC000_0000
-    ; call load_kernel
-
 
     ; Enter long mode
     ; =======================================
@@ -110,6 +133,14 @@ entry:
     jmp CODE_SEG_64:LongMode          ; Load CS with 64 bit segment and flush the instruction cache
 
 [bits 64]
+; @param rdi  - start of code
+; @param rcx  - amount of pages
+BuildKernelPage:
+    ; kernel is loaded at 0x10_0000
+
+    ret
+
+[bits 64]
 LongMode:
     mov ax, DATA_SEG_64
     mov ds, ax
@@ -136,27 +167,27 @@ LongMode:
     ; We should allocate more memory for the kernel 
     jmp 0x0100000
 
-    call longmode_to_real
-[bits 16]
-    mov ax, 0x0e24
-    int 10h
-
-    mov ax, sp
-    call PrintHex16
-
-    mov ax, 0x0000 ; destination high
-    mov es, ax
-    mov bx, 0x8000 ; destination low
-    mov dx, 0x0000 ; lba high
-    mov ax, 0x0000 ; lba low
-    mov di, 1      ; kernel is on drive 1
-    mov cx, 1      ; read one sector
-    call ReadSectors
-
-    mov ax, 0x0e24
-    int 10h
-    call real_to_longmode
-[bits 64]
+;     call longmode_to_real
+; [bits 16]
+;     mov ax, 0x0e24
+;     int 10h
+; 
+;     mov ax, sp
+;     call PrintHex16
+; 
+;     mov ax, 0x0000 ; destination high
+;     mov es, ax
+;     mov bx, 0x8000 ; destination low
+;     mov dx, 0x0000 ; lba high
+;     mov ax, 0x0000 ; lba low
+;     mov di, 1      ; kernel is on drive 1
+;     mov cx, 1      ; read one sector
+;     call ReadSectors
+; 
+;     mov ax, 0x0e24
+;     int 10h
+;     call real_to_longmode
+; [bits 64]
     mov edi, 0x00b8000
     mov rax, 0x0F210F640F6C0F72
     mov [edi + 16], rax
