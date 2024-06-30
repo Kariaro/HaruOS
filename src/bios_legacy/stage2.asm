@@ -12,95 +12,119 @@ jmp entry
 kernel_file:
     db 'KERNEL  BIN', 0
 
+; simple memory map
+; @param [edx:eax] - 64 bit address of memory
+; @param edi       - location of table in memory
+; [bits 32]
+; simple_mmap:
+;     push edi
+;     xor eax, eax
+;     mov ecx, 0x200
+;     cld
+;     rep stosd
+;     pop edi
+
 [bits 16]
 entry:
-    mov si, loaded_message_rl
-    call print
+    mov    si, loaded_message_rl
+    call   print
 
-    mov si, kernel_file  ; file to read
-    mov dl, 1            ; drive to read from
-    push WORD 0xC000     ; 0010 ....
-    push WORD 0x0000     ; .... 0000
-    call LoadFileFAT32
-    jnc .load_kernel
-    mov ax, 0x0e24 ; '$'
-    int 10h
-    int 18h
-.load_kernel:
+    mov    si, kernel_file  ; file to read
+    mov    dl, 1            ; drive to read from
+    push   WORD 0x8000      ; 8000 ....
+    push   WORD 0x0000      ; .... 0000
+    call   LoadFileFAT32
+    jnc    .kernel_loaded
+    mov    ax, bx
+    call   PrintHex8
+    mov    ax, 0x0e24 ; '$'
+    int    10h
+    int    18h
+.kernel_loaded:
+    ; Read KERNEL.BIN at [0x8000_0000]
 
-    ; Read KERNEL.BIN at [0x0010_0000]
-    ; call LOAD_KERNEL_ASM
-
-    mov al, BYTE [bx + 3]
-    call PrintHex8
-    mov al, BYTE [bx + 2]
-    call PrintHex8
-    mov al, BYTE [bx + 1]
-    call PrintHex8
-    mov al, BYTE [bx + 0]
-    call PrintHex8
-    
-    mov ax, 0x0e24
-    int 10h
-    mov ah, 0x00
-    int    16h  ; BIOS await keypress
+    mov    al, BYTE [bx + 3]
+    call   PrintHex8
+    mov    al, BYTE [bx + 2]
+    call   PrintHex8
+    mov    al, BYTE [bx + 1]
+    call   PrintHex8
+    mov    al, BYTE [bx + 0]
+    call   PrintHex8
 
     ; Enter protected mode
     call real_to_pmode
 [bits 32]
-
-    mov esi, loaded_message_pm
-    mov ebx, 0xb8000 + (160 * 2)
-    .loop1:
-        lodsb     
-        mov BYTE [ebx], al
-        cmp al, 0
-        je .end1
-        add ebx, 2
-        jmp .loop1
-    .end1:
-
     ; Enter long mode
     ; =======================================
 
-    mov edi, 0x90000
-
+    ; Construct Page Map Level 4 [0x10000]
+    ; Boot   mappings [0x8000-0xBFFF]
+    ; Kernel mappings [0xC000-0xFFFF]
+    mov edi, 0x10000
     push edi
-    mov ecx, 0x1000
+    mov ecx, 0x2000
     xor eax, eax
     cld
     rep stosd
     pop edi
 
-    ; Build the Page Map Level 4
-    ; es:di points to the Page Map Level 4 table
-    lea eax, [es:edi + 0x1000]              ; Put the address of the Page Directory Pointer Table in to EAX
-    or eax, PAGE_PRESENT | PAGE_WRITE       ; Or EAX with the flags - present flag, writable flag
-    mov DWORD [es:edi + 0x000], eax         ; Store the value of EAX as the first PML4E
+    ; Set PML4[0] -> PML3[0]         (Each entry in PML4 is 512 GB)
+    lea eax, [edi + 0x1000]
+    or eax, PAGE_PRESENT | PAGE_WRITE
+    mov DWORD [edi + 0x0000], eax
 
-    ; Build the Page Directory Pointer Table
-    lea eax, [es:edi + 0x2000]              ; Put the address of the Page Directory in to EAX
-    or eax, PAGE_PRESENT | PAGE_WRITE       ; Or EAX with the flags - present flag, writable flag
-    mov DWORD [es:edi + 0x1000], eax        ; Store the value of EAX as the first PDPTE
+    ; Set PML3[0] -> PML2[0]         (Each entry in PML3 is 1 GB)
+    lea eax, [edi + 0x2000]
+    or eax, PAGE_PRESENT | PAGE_WRITE
+    mov DWORD [edi + 0x1000], eax
+
+    ; Set PML2[0] -> PML1[0]         (Each entry in PML2 is 2 MB)
+    lea eax, [edi + 0x3000]
+    or eax, PAGE_PRESENT | PAGE_WRITE
+    mov DWORD [edi + 0x2000], eax
     
-    ; Build the Page Directory
-    lea eax, [es:edi + 0x3000]              ; Put the address of the Page Table in to EAX
-    or eax, PAGE_PRESENT | PAGE_WRITE       ; Or EAX with the flags - present flag, writeable flag
-    mov DWORD [es:edi + 0x2000], eax        ; Store to value of EAX as the first PDE
-
-    push edi                                ; Save DI for the time being
-    lea edi, [edi + 0x3000]                 ; Point DI to the page table
-    mov eax, PAGE_PRESENT | PAGE_WRITE      ; Move the flags into EAX - and point it to 0x0000
-
-    ; Build the Page Table
+    ; Set all values in PML1
+    push edi
+    mov eax, PAGE_PRESENT | PAGE_WRITE
 .LoopPageTable:
-    mov DWORD [es:edi], eax
+    mov DWORD [edi + 0x3000], eax
     add eax, 0x1000
     add edi, 8
-    cmp eax, 0x200000                 ; If we did all 2MiB, end
+    cmp eax, 0x200000
     jb .LoopPageTable
+    pop edi
 
-    pop edi                            ; Restore DI
+    ; Setup kernel memory
+    ;  last 4 gb is PML4[511][508][0][0]
+    ; Set PML4[511] -> [edi + 0x4000] (PML4[511] memory)
+    lea eax, [edi + 0x4000]
+    or eax, PAGE_PRESENT | PAGE_WRITE
+    mov DWORD [edi + 0x0000 + (0x4 * 511)], eax
+
+    ; K_PML3[508 -> 511] [0xffff_ffff_8000_0000 -> 0xffff_ffff_ffff_ffff]
+    ; Set K_PML3[508] -> K_PML2[0]
+    lea eax, [edi + 0x5000]
+    or eax, PAGE_PRESENT | PAGE_WRITE
+    mov DWORD [edi + 0x4000 + (0x4 * 508)], eax
+
+    ; Set K_PML2[0] -> K_PML1[0]
+    lea eax, [edi + 0x6000]
+    or eax, PAGE_PRESENT | PAGE_WRITE
+    mov DWORD [edi + 0x5000], eax
+
+    ; Set all values in K_PML1
+    push edi
+    mov eax, PAGE_PRESENT | PAGE_WRITE
+    add eax, 0x80000_000
+.LoopPageTable2: ; make it point to physical address 0x8000_0000
+    mov DWORD [edi + 0x6000], eax
+    add eax, 0x1000
+    add edi, 8
+    cmp eax, 0x80200_000
+    jb .LoopPageTable2
+    pop edi ; kernel has 2 mb mapped at 0xffff_ffff_8000_0000 -> 0xffff_ffff_8020_0000
+
 
     ; Disable IRQs
     mov al, 0xFF                      ; Out 0xFF to 0xA1 and 0x21 to disable all IRQs
@@ -125,19 +149,33 @@ entry:
     or eax, 0x00000100                ; Set the LME bit
     wrmsr
 
-    mov ebx, cr0                      ; Activate long mode -
-    or ebx, 0x80000001                ; - by enabling paging and protection simultaneously
-    mov cr0, ebx
+    mov eax, cr0                      ; Activate long mode
+    or eax, 0x80000000
+    mov cr0, eax
 
-    ;lgdt [gdtptr]                     ; Load GDT.Pointer defined below
     jmp CODE_SEG_64:LongMode          ; Load CS with 64 bit segment and flush the instruction cache
 
 [bits 64]
-; @param rdi  - start of code
-; @param rcx  - amount of pages
-BuildKernelPage:
-    ; kernel is loaded at 0x10_0000
-
+Bit64_PutHex:
+    push   rax
+    push   rcx
+    mov    ecx, eax
+    shr    eax, 4
+    call   .get_nibble
+    mov    BYTE [edi], al
+    mov    eax, ecx
+    call   .get_nibble
+    mov    BYTE [edi + 2], al
+    pop    rcx
+    pop    rax
+    ret
+.get_nibble:
+    and    al, 0x0f
+    add    al, 0x30
+    cmp    al, 0x3a
+    jc     .hexa
+    add    al, 0x07
+.hexa:
     ret
 
 [bits 64]
@@ -164,7 +202,19 @@ LongMode:
     mov rax, 0x1F211F641F6C1F72
     mov [edi + 16], rax
 
-    ; We should allocate more memory for the kernel 
+    mov eax, 0xE2
+    mov edi, 0x00b8000
+    call Bit64_PutHex
+    mov eax, 0x3F
+    mov edi, 0x00b8006
+    call Bit64_PutHex
+
+    mov al, BYTE [0xffff_ffff_8000_0000]
+
+    ; We should allocate more memory for the kernel
+.hlt:
+    hlt
+    jmp .hlt
     jmp 0x0100000
 
 ;     call longmode_to_real

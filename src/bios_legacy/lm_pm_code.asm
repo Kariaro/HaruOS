@@ -17,10 +17,10 @@ real_to_pmode:
     push 0x0000
     push ax
     cli
-    
+
     ; load gdt
     lgdt [gdtptr]
-    
+
     ; enable pe bit in cr0
     mov eax, cr0
     or eax, 1

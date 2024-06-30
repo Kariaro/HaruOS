@@ -28,7 +28,7 @@ export PATH=".tools/gcc/bin:${PATH}"
 set -x
 nasm -f bin src/bios_legacy/stage1.asm -o bin/bootloader.img
 nasm -f bin src/bios_legacy/stage2.asm -o bin/stage2.bin -Isrc/bios_legacy
-nasm -f bin src/bios_legacy/boot_test.asm -o bin/stage3.bin -Isrc/bios_legacy
+# nasm -f bin src/bios_legacy/boot_test.asm -o bin/stage3.bin -Isrc/bios_legacy
 
 x86_64-elf-gcc -c src/kernel/kernel.c -o bin/gcc/kernel.o -ffreestanding -nostdlib -nostdinc
 # strip -O elf64-little -o bin/gcc/kernel_elf64.o bin/gcc/kernel.o

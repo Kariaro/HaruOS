@@ -1,23 +1,18 @@
 
 [bits 16]
 
+%define FILE_ERROR_ROOT_SECTOR    1
+%define FILE_ERROR_ROOT_DIRECTORY 2
+%define FILE_ERROR_FILE_NOT_FOUND 3
+%define FILE_ERROR_SECTOR_READ    4
+
 ; @param si      - pointer to file name
 ; @param dl      - drive to read from
 ; @stack DWORD   - memory offset
 ;
 ; @flag carry    - set if file failed to load
-; @return bx     - pointer to sectors read
+; @return bx     - error code or pointer to sectors
 LoadFileFAT32:
-    jmp .start
-.drive:          dw 0
-.file_name_ptr:  dw 0
-.memory_offset:  dd 0
-.write_offset:   dd 0
-.BPB_SecPerClus: db 0
-.data_sector:    dw 0x0000
-.lba:            dw 0x0000
-.size:           dd 0
-.start:
     ; assume es = 0x0000
     pop    ax
     mov    BYTE [.drive], dl
@@ -30,12 +25,12 @@ LoadFileFAT32:
 
     ; read fat32 root sector
     mov    bx, 0x8000 ; dst low
-    mov    dx, 0x0000 ; lba high
-    mov    ax, 0x0000 ; lba low
+    mov    ax, 0x0000 ; lba
     mov    cx, 1      ; read one sector
-    mov    di, WORD [.drive]
+    mov    dl, BYTE [.drive]
     call   ReadSectors
-    mov    bx, 0x0000
+    mov    bx, FILE_ERROR_ROOT_SECTOR
+    jc     .read_fail
 
     ; get sectors per cluster
     mov    al, BYTE [0x800D]      ; BPB_SecPerClus
@@ -59,31 +54,13 @@ LoadFileFAT32:
 
     ; read first root directory cluster
     mov    bx, 0x8000 ; dst low
-    mov    dx, 0x0000 ; lba high
-    pop    ax         ; lba low
+    pop    ax         ; lba
     mov    cx, 1      ; read one sector
-    mov    di, WORD [.drive]
+    mov    dl, BYTE [.drive]
     call   ReadSectors
+    mov    bx, FILE_ERROR_ROOT_DIRECTORY
+    jc     .read_fail
 
-    ; mov    dx, 0
-    ; mov    cx, 0x0200
-    ; mov    bx, 0x8000
-    ; .LOOP:
-    ;     mov    al, BYTE [bx]
-    ;     call   PrintHex8
-    ;     inc    bx
-    ;     inc    dx
-    ;     cmp    dx, 32
-    ;     jnz    .END
-    ;     mov    dx, 0
-    ;     mov    ax, 0x0e0d
-    ;     int    10h
-    ;     mov    ax, 0x0e0a
-    ;     int    10h
-    ; .END:
-    ;     loop   .LOOP
-
-    ; find file
     mov    cx, 8
     mov    di, 0x8020
 .find_file:
@@ -97,9 +74,8 @@ LoadFileFAT32:
     je     .file_found
     add    di, 0x0020
     loop   .find_file
-    ; failed to find file, (set carry flag to for error)
-    stc
-    ret
+    mov    bx, FILE_ERROR_FILE_NOT_FOUND
+    jmp    .read_fail
 .file_found:
     ; save size of file
     mov    ax, WORD [di + 0x1C]
@@ -117,20 +93,12 @@ LoadFileFAT32:
     mov    WORD [.lba], ax
 .READ:
     mov    bx, 0x8000      ; destination low
-    mov    dx, 0x0000      ; lba high
-    mov    ax, WORD [.lba] ; lba low
+    mov    ax, WORD [.lba] ; lba
     mov    cx, 1           ; read one sector
-    mov    di, WORD [.drive]
+    mov    dl, BYTE [.drive]
     call   ReadSectors
-
-    ; mov    ax, WORD [.size + 2]
-    ; call   PrintHex16
-    ; mov    ax, WORD [.size + 0]
-    ; call   PrintHex16
-    ; mov    ax, 0x0e0d
-    ; int    10h
-    ; mov    ax, 0x0e0a
-    ; int    10h
+    mov    bx, FILE_ERROR_SECTOR_READ
+    jc     .read_fail
     call   real_to_pmode
 [bits 32]
     inc    WORD [.lba]
@@ -152,6 +120,18 @@ LoadFileFAT32:
 .READ_DONE:
     call   pmode_to_real
 [bits 16]
-    clc    ; clear carry flag
     mov    bx, .write_offset
+    clc    ; clear carry flag for success
     ret
+.read_fail:
+    stc    ; set carry flag for error
+    ret
+
+.drive:          db 0x00
+.BPB_SecPerClus: db 0x00
+.file_name_ptr:  dw 0x0000
+.data_sector:    dw 0x0000
+.lba:            dw 0x0000
+.memory_offset:  dd 0
+.write_offset:   dd 0
+.size:           dd 0
