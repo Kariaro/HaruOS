@@ -102,11 +102,11 @@ entry:
     or eax, PAGE_PRESENT | PAGE_WRITE
     mov DWORD [edi + 0x0000 + (0x4 * 511)], eax
 
-    ; K_PML3[508 -> 511] [0xffff_ffff_8000_0000 -> 0xffff_ffff_ffff_ffff]
-    ; Set K_PML3[508] -> K_PML2[0]
+    ; K_PML3[510 -> 511] [0xffff_ffff_8000_0000 -> 0xffff_ffff_ffff_ffff]
+    ; Set K_PML3[510] -> K_PML2[0]
     lea eax, [edi + 0x5000]
     or eax, PAGE_PRESENT | PAGE_WRITE
-    mov DWORD [edi + 0x4000 + (0x4 * 508)], eax
+    mov DWORD [edi + 0x4000 + (0x4 * 510)], eax
 
     ; Set K_PML2[0] -> K_PML1[0]
     lea eax, [edi + 0x6000]
