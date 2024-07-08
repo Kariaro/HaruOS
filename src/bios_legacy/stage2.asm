@@ -3,14 +3,16 @@
 bits 16
 org 0x0600
 
-jmp entry
+%define CODE_SEG_32     0x0008
+%define DATA_SEG_32     0x0010
+%define CODE_SEG_16     0x0018
+%define DATA_SEG_16     0x0020
+%define CODE_SEG_64     0x0028
+%define DATA_SEG_64     0x0030
 
-%include "lm_pm_code.asm"
-%include "read_sectors.asm"
-%include "load_file.asm"
-
-kernel_file:
-    db 'KERNEL  BIN', 0
+%define PAGE_PRESENT    (1 << 0)
+%define PAGE_WRITE      (1 << 1)
+%define PAGE_SIZE       (1 << 7)
 
 ; simple memory map
 ; @param [edx:eax] - 64 bit address of memory
@@ -26,6 +28,9 @@ kernel_file:
 
 [bits 16]
 entry:
+    mov    ax, 0x0e21 ; '!'
+    int    10h
+
     mov    si, loaded_message_rl
     call   print
 
@@ -301,6 +306,12 @@ PrintHex8:
     int    10h
     ret
 
+%include "lm_pm_code.asm"
+%include "read_sectors.asm"
+%include "load_file.asm"
+
+kernel_file:
+    db 'KERNEL  BIN', 0
 
 loaded_message_rl db 0x0d, 0x0a, 'STAGE2.BIN was executed from memory', 0x0d, 0x0a, 0
 loaded_message_pm db 'STAGE2.BIN entered protected mode', 0

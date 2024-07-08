@@ -13,7 +13,7 @@ nop
 ;    MediaDescriptor     db  0xF8
 ;    SectorsPerFAT       dw  0x0000
     SectorsPerTrack     dw  0x00FF
-    SectorsPerHead      dw  0x0002
+    NumberOfHeads      dw  0x0002
 ;    HiddenSectors       dd  0x00000000
 ;    TotalSectors        dd  0x00000001
 ;    Flags               dw  0x0000
@@ -41,6 +41,22 @@ fix_cs:
 
     ; save boot drive
     mov BYTE [BootDrive], dl
+    ; mov BYTE [DriveNumber], dl
+
+    ; get drive geometry
+    mov ax, 0x0800
+    mov dl, BYTE [DriveNumber]
+    int 13h
+    mov BYTE [NumberOfHeads], dh
+    inc WORD [NumberOfHeads]
+    mov BYTE [SectorsPerTrack], cl
+    and BYTE [SectorsPerTrack], 0x3f
+
+    ; mov ax, WORD [NumberOfHeads]
+    ; call PrintHex16
+    ; mov ax, WORD [SectorsPerTrack]
+    ; call PrintHex16
+    
 
     ; calculate sector where data should start
     xor ax, ax
@@ -55,6 +71,15 @@ fix_cs:
     mov cx, 0x0001
     mov bx, 0x0600
     call ReadFat32Sectors
+
+;     mov di, 0
+;     mov cx, 32
+;     mov bx, 0x0600
+; .test:
+;     mov ax, WORD [es:bx]
+;     call PrintHex16
+;     add bx, 2
+;     loop .test
 
     ; find 'STAGE2.BIN' in the root entry
     mov cx, 8
@@ -81,14 +106,42 @@ fix_cs:
         ; get size of file
         call CalculateFileSize
         push ax
-        call PrintHex16
+        ; call PrintHex16
 
         ; read stage2.bin data
-        mov ax, WORD [di + 0x1A]
+        mov ax, WORD [es:di + 0x1A]
         call ClusterLBA
         pop cx
         mov bx, 0x0600
         call ReadFat32Sectors
+
+        mov di, 1
+        mov cx, 256
+        mov bx, 0x0600
+        .test:
+            dec di
+            cmp di, 0
+            jne .test_next
+            mov ax, 0x0e0d
+            int 10h
+            mov ax, 0x0e0a
+            int 10h
+            mov ax, bx
+            call PrintHex16
+            mov di, 16
+        .test_next:
+            mov al, BYTE [es:bx]
+            call PrintHex8
+            mov ax, 0x0e20
+            int 10h
+            inc bx
+            
+            loop .test
+
+        mov si, Stage2FileFarJump
+        call DisplayMessage
+
+        jmp $
 
         ; jump into stage2 code located [0000:0600]
         mov dl, BYTE [BootDrive]
@@ -104,8 +157,8 @@ fix_cs:
 ; @param  di    contains the address of the fat32 file struct
 ; @return ax    the amount of sectors the file occupies
 CalculateFileSize: ; (size + BytesPerSector - 1) / BytesPerSector
-    mov dx, WORD [di + 0x1E] ; high 16 bits
-    mov ax, WORD [di + 0x1C] ; low 16 bits
+    mov dx, WORD [es:di + 0x1E] ; high 16 bits
+    mov ax, WORD [es:di + 0x1C] ; low 16 bits
     mov cx, WORD [BytesPerSector]
     dec cx
     add ax, cx
@@ -116,6 +169,11 @@ CalculateFileSize: ; (size + BytesPerSector - 1) / BytesPerSector
 
 ; Reads cx sectors from disk starting at ax into memory location es:bx
 ReadFat32Sectors:
+    cmp    cx, 0
+    jne    .MAIN
+    mov    ax, 0
+    int    16h
+    jmp    $
 .MAIN:
     ; 5 retries of reading
     mov    di, 0x0005
@@ -133,13 +191,12 @@ ReadFat32Sectors:
         inc     dl                                  ; adjust for sector 0
         mov     cl, dl  ; sector
         xor     dx, dx                              ; prepare dx:ax for operation
-        div     WORD [SectorsPerHead]               ; calculate
+        div     WORD [NumberOfHeads]               ; calculate
         mov     dh, dl  ; head
         mov     ch, al  ; track
 
     ; Read one sector from the BIOS
-    mov    ah, 0x02    ; BIOS read sector
-    mov    al, 0x01    ; read one sector
+    mov    ax, 0x0201  ; BIOS read sector
     mov    dl, BYTE [DriveNumber]
     int    13h
     jnc    .SUCCESS
@@ -240,10 +297,10 @@ PrintHex8:
 
 datasector         dw 0
 
-Stage2FileTooLarge db 0x0d, 0x0a, 'STAGE2.BIN file too large!', 0x0d, 0x0a, 0
+Stage2FileFarJump  db 0x0d, 0x0a, 'jmp 0000:0600', 0x0d, 0x0a, 0
 Stage2FileNotFound db 0x0d, 0x0a, 'STAGE2.BIN was not found!',  0x0d, 0x0a, 0
 Stage2File         db 'STAGE2  BIN', 0
-NewLine            db 0x0d, 0x0a, 0
+; NewLine            db 0x0d, 0x0a, 0
 DriveNumber        db 1
 BootDrive          db 0
 
