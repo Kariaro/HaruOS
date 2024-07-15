@@ -6,11 +6,19 @@ export PATH="/d/msys64/mingw64/bin:${PATH}"
 ./scripts/build.sh
 
 qemu-system-x86_64 \
-	-S -s \
-	-drive index=0,format=raw,if=floppy,file=bin/bootloader.img \
-	-drive index=1,format=raw,if=floppy,file=bin/fat32.img &
+	-chardev stdio,id=char0 -mon chardev=char0,mode=readline \
+	-boot a \
+	-drive format=raw,if=floppy,file=bin/bootloader.img \
+	-drive index=0,format=raw,if=ide,file=bin/fat32.img
+#	-S -s \
 
+exit
+
+export PATH="/d/msys64/mingw64/bin:${PATH}"
 gdb -ex 'target remote localhost:1234' \
     -ex 'set architecture i8086' \
-    -ex 'break *0x7c02' \
-    -ex 'layout asm'
+    -ex 'break *0x7cd8' \
+	-ex 'continue'
+
+
+#    -ex 'layout asm'

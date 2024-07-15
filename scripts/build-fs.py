@@ -27,7 +27,7 @@ fat32_path = 'src/fat32'
 fat32_files = [f for f in listdir(fat32_path) if isfile(join(fat32_path, f))]
 
 fat32_image = fs.open_fs("fat://bin/fat32.img")
-fs.copy.copy_file("bin", "stage2.bin", fat32_image, "STAGE2.BIN")
+# fs.copy.copy_file("bin", "stage2.bin", fat32_image, "STAGE2.BIN")
 fs.copy.copy_file("bin/gcc", "kernel.o", fat32_image, "KERNEL.BIN")
 
 for file in fat32_files:

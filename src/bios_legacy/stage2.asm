@@ -14,48 +14,64 @@ org 0x0600
 %define PAGE_WRITE      (1 << 1)
 %define PAGE_SIZE       (1 << 7)
 
-; simple memory map
-; @param [edx:eax] - 64 bit address of memory
-; @param edi       - location of table in memory
-; [bits 32]
-; simple_mmap:
-;     push edi
-;     xor eax, eax
-;     mov ecx, 0x200
-;     cld
-;     rep stosd
-;     pop edi
+STAGE2_START:
+jmp short entry
+times 4-($-$$)   db 0x90
+
+; How many sectors to read
+dw (STAGE2_END - STAGE2_START + 511) / 512
+
 
 [bits 16]
 entry:
     mov    ax, 0x0e21 ; '!'
     int    10h
 
+    mov    al, dl
+    call   PrintHex8
+
     mov    si, loaded_message_rl
     call   print
 
     mov    si, kernel_file  ; file to read
-    mov    dl, 1            ; drive to read from
-    push   WORD 0x8000      ; 8000 ....
+    mov    dl, 0x80         ; drive to read from
+    push   WORD 0x0010      ; 0010 ....
     push   WORD 0x0000      ; .... 0000
     call   LoadFileFAT32
     jnc    .kernel_loaded
+    mov    si, could_not_find_kernel
+    call   print
     mov    ax, bx
-    call   PrintHex8
-    mov    ax, 0x0e24 ; '$'
-    int    10h
-    int    18h
+    call   PrintHex16
+    jmp    $
 .kernel_loaded:
-    ; Read KERNEL.BIN at [0x8000_0000]
+    mov    ax, 0x1000
+    mov    es, ax
+    mov    bx, 0x0000
+.tloop:
+    mov    cx, 0x0100
+    call   PrintHexDump
+    ; xor    ax, ax
+    ; int    16h
+    add    bx, 0x0100
+    cmp    bx, 0x0100
+    jb     .tloop
+    xor    ax, ax
+    mov    es, ax
 
-    mov    al, BYTE [bx + 3]
-    call   PrintHex8
-    mov    al, BYTE [bx + 2]
-    call   PrintHex8
-    mov    al, BYTE [bx + 1]
-    call   PrintHex8
-    mov    al, BYTE [bx + 0]
-    call   PrintHex8
+
+
+    ; KERNEL.BIN now exists at [1000:0000] 0x10000
+
+    mov    ax, 0x1000
+    mov    es, ax
+    mov    bx, 0x0000
+    call   RemapELF
+
+
+    mov ah, 0x00
+    int 16h  ; BIOS await keypress
+    int 19h  ; BIOS warning / restart
 
     ; Enter protected mode
     call real_to_pmode
@@ -220,7 +236,7 @@ LongMode:
 .hlt:
     hlt
     jmp .hlt
-    jmp 0x0100000
+    jmp 0x010000
 
 ;     call longmode_to_real
 ; [bits 16]
@@ -251,69 +267,20 @@ LongMode:
     hlt
     jmp $
 
-
-
-
-[bits 16]
-print:
-    push ax
-    mov ah, 0eh
-.rep:
-    lodsb
-    cmp al, 0
-    je .done
-    int 10h
-    jmp .rep
-.done:
-    pop ax
-    ret
-
-[bits 16]
-PrintHex16:
-    push   ax
-    push   cx
-    mov    cx, ax
-    shr    ax, 8
-    call   PrintHex8
-    mov    ax, cx
-    call   PrintHex8
-    mov    al, 0x20
-    mov    ah, 0eh
-    int    10h
-    pop    cx
-    pop    ax
-    ret
-PrintHex8:
-    push   ax
-    push   cx
-    mov    cx, ax
-    mov    ax, cx
-    shr    ax, 4
-    call   .DIGIT
-    mov    ax, cx
-    call   .DIGIT
-    pop    cx
-    pop    ax
-    ret
-.DIGIT:
-    and    al, 0x0f
-    add    al, 0x30
-    cmp    al, 0x3a
-    jc     .hexa
-    add    al, 0x07
-.hexa:
-    mov    ah, 0eh
-    int    10h
-    ret
-
+%include "print_util.asm"
 %include "lm_pm_code.asm"
 %include "read_sectors.asm"
 %include "load_file.asm"
+%include "load_elf.asm"
 
 kernel_file:
     db 'KERNEL  BIN', 0
 
+could_not_find_kernel db 0x0d, 0x0a, 'Could not find KERNEL.O', 0x0d, 0x0a, 0
+
 loaded_message_rl db 0x0d, 0x0a, 'STAGE2.BIN was executed from memory', 0x0d, 0x0a, 0
 loaded_message_pm db 'STAGE2.BIN entered protected mode', 0
 
-times 1024+512-($-$$)   db 0
+times 1024+512+512+512-($-$$)   db 0
+
+STAGE2_END:
