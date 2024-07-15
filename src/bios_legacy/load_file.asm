@@ -158,11 +158,6 @@ LoadFileFAT32:
     ; Increment read sectors counter
     inc    bx
 
-    mov    ax, WORD [.size + 2]
-    call   PrintHex16_nospace
-    mov    ax, WORD [.size + 0]
-    call   PrintHex16
-
     ; Decrement size (add -0x200 = 0xfffffe00)
     add    WORD [.size + 0], 0xFE00
     adc    WORD [.size + 2], 0xFFFF

@@ -1,6 +1,6 @@
 #include "kernel.h"
 
-char* c_helloWorld = "This is a fun message, Hello, World!\0";
+char* c_helloWorld = "Hello from KERNEL.C elf64 loaded from bootloader\0";
 
 void kernel_main(uint8_t a_bootDrive)
 {

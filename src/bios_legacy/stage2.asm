@@ -21,6 +21,9 @@ times 4-($-$$)   db 0x90
 ; How many sectors to read
 dw (STAGE2_END - STAGE2_START + 511) / 512
 
+boot_drive:
+    db 0x00
+
 %macro hex_dump_memory 3
 	push   ax
 	mov    ax, es
@@ -49,12 +52,10 @@ dw (STAGE2_END - STAGE2_START + 511) / 512
 
 [bits 16]
 entry:
-    mov    ax, 0x0e21 ; '!'
-    int    10h
+    ; Save boot drive for later
+    mov    BYTE [boot_drive], dl
 
-    mov    al, dl
-    call   PrintHex8
-
+    ; Print loaded message
     mov    si, loaded_message_rl
     call   print
 
@@ -79,61 +80,15 @@ entry:
     xor    ax, ax
     mov    es, ax
 
-
-;     hex_dump_memory 0x10000, 0x200, 0x100
-;     hex_dump_memory 0x20000, 0x200, 0x100
-
-;     mov    ax, 0x2000
-;     mov    es, ax
-;     mov    bx, 0x0000
-; .tloop:
-;     mov    cx, 0x0100
-;     call   PrintHexDump
-;     xor    ax, ax
-;     int    16h
-;     add    bx, 0x0100
-;     cmp    bx, 0x0100
-;     jb     .tloop
-;     xor    ax, ax
-;     mov    es, ax
-
-    mov ax, es
-    call PrintHex16
-
-;    mov ah, 0x00
-;    int 16h  ; BIOS await keypress
-;    int 19h  ; BIOS warning / restart
-
-
-
+    ; KERNEL.BIN now remaped at [2000:0000] 0x10000
     ; Enter protected mode
     call real_to_pmode
 [bits 32]
-    mov esi, loaded_message_pm
-    mov ebx, 0xb8000 + (160 * 2)
-    .loop1:
-        lodsb     
-        mov BYTE [ebx], al
-        cmp al, 0
-        je .end1
-        add ebx, 2
-        jmp .loop1
-    .end1:
-
-;     call pmode_to_real
-; [bits 16]
-;     mov ax, 0
-;     int 16h
-; 
-;     call real_to_pmode
-; [bits 32]
-
     ; Enter long mode
     ; =======================================
 
-    ; Construct Page Map Level 4 [0x10000]
+    ; Construct Page Map Level 4 [0x8000]
     ; Boot   mappings [0x8000-0xBFFF]
-    ; Kernel mappings [0xC000-0xFFFF]
     mov edi, 0x8000
     push edi
     mov ecx, 0x1000
@@ -167,37 +122,6 @@ entry:
     cmp eax, 0x200000
     jb .LoopPageTable
     pop edi
-
-;     ; Setup kernel memory
-;     ;  last 4 gb is PML4[511][508][0][0]
-;     ; Set PML4[511] -> [edi + 0x4000] (PML4[511] memory)
-;     lea eax, [edi + 0x4000]
-;     or eax, PAGE_PRESENT | PAGE_WRITE
-;     mov DWORD [edi + 0x0000 + (0x4 * 511)], eax
-; 
-;     ; K_PML3[510 -> 511] [0xffff_ffff_8000_0000 -> 0xffff_ffff_ffff_ffff]
-;     ; Set K_PML3[510] -> K_PML2[0]
-;     lea eax, [edi + 0x5000]
-;     or eax, PAGE_PRESENT | PAGE_WRITE
-;     mov DWORD [edi + 0x4000 + (0x4 * 510)], eax
-; 
-;     ; Set K_PML2[0] -> K_PML1[0]
-;     lea eax, [edi + 0x6000]
-;     or eax, PAGE_PRESENT | PAGE_WRITE
-;     mov DWORD [edi + 0x5000], eax
-; 
-;     ; Set all values in K_PML1
-;     push edi
-;     mov eax, PAGE_PRESENT | PAGE_WRITE
-;     add eax, 0x80000_000
-; .LoopPageTable2: ; make it point to physical address 0x8000_0000
-;     mov DWORD [edi + 0x6000], eax
-;     add eax, 0x1000
-;     add edi, 8
-;     cmp eax, 0x80200_000
-;     jb .LoopPageTable2
-;     pop edi ; kernel has 2 mb mapped at 0xffff_ffff_8000_0000 -> 0xffff_ffff_8020_0000
-
 
     ; Disable IRQs
     mov al, 0xFF                      ; Out 0xFF to 0xA1 and 0x21 to disable all IRQs
@@ -259,67 +183,10 @@ LongMode:
     mov fs, ax
     mov gs, ax
     mov ss, ax
-
-    ; Blank out the screen to a blue color.
-    ; mov edi, 0xB8000
-    ; mov rcx, 500                      ; Since we are clearing uint64_t over here, we put the count as Count/4.
-    ; mov rax, 0x1F201F201F201F20       ; Set the value to set the screen to: Blue background, white foreground, blank spaces.
-    ; rep stosq                         ; Clear the entire screen.
-
-    ; Display "Hello World!"
-    mov edi, 0x00b8000
-    mov rax, 0x1F6C1F6C1F651F48
-    mov [edi +  0], rax
-    mov rax, 0x1F6F1F571F201F6F
-    mov [edi +  8], rax
-    mov rax, 0x1F211F641F6C1F72
-    mov [edi + 16], rax
-
-    mov eax, 0xE2
-    mov edi, 0x00b8000
-    call Bit64_PutHex
-    mov eax, 0x3F
-    mov edi, 0x00b8006
-    call Bit64_PutHex
-
     call 0x20000
-
-    ; mov al, BYTE [0xffff_ffff_8000_0000]
-
-    ; We should allocate more memory for the kernel
 .hlt:
     hlt
     jmp .hlt
-    jmp 0x010000
-
-;     call longmode_to_real
-; [bits 16]
-;     mov ax, 0x0e24
-;     int 10h
-; 
-;     mov ax, sp
-;     call PrintHex16
-; 
-;     mov ax, 0x0000 ; destination high
-;     mov es, ax
-;     mov bx, 0x8000 ; destination low
-;     mov dx, 0x0000 ; lba high
-;     mov ax, 0x0000 ; lba low
-;     mov di, 1      ; kernel is on drive 1
-;     mov cx, 1      ; read one sector
-;     call ReadSectors
-; 
-;     mov ax, 0x0e24
-;     int 10h
-;     call real_to_longmode
-; [bits 64]
-    mov edi, 0x00b8000
-    mov rax, 0x0F210F640F6C0F72
-    mov [edi + 16], rax
-
-
-    hlt
-    jmp $
 
 %include "print_util.asm"
 %include "lm_pm_code.asm"
@@ -332,7 +199,7 @@ kernel_file:
 
 could_not_find_kernel db 0x0d, 0x0a, 'Could not find KERNEL.O', 0x0d, 0x0a, 0
 
-loaded_message_rl db 0x0d, 0x0a, 'STAGE2.BIN was executed from memory', 0x0d, 0x0a, 0
+loaded_message_rl db 'From STAGE2.BIN : jump was successful', 0x0d, 0x0a, 0x0d, 0x0a, 0
 loaded_message_pm db 'STAGE2.BIN entered protected mode', 0
 
 times 1024+512+512+512-($-$$)   db 0
