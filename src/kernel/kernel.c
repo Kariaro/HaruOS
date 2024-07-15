@@ -1,16 +1,17 @@
 #include "kernel.h"
 
-char* c_helloWorld = "Hello, World!";
+char* c_helloWorld = "This is a fun message, Hello, World!\0";
 
 void kernel_main(uint8_t a_bootDrive)
 {
 	uint8_t* vgaBuffer = (uint8_t*)(0xb8000);
 
-
-	for(int i = 0; i < 12; i++)
+	size_t i = 0;
+	while(c_helloWorld[i] != 0)
 	{
 		vgaBuffer[i * 2 + 0] = c_helloWorld[i];
-		vgaBuffer[i * 2 + 1] = 0;
+		vgaBuffer[i * 2 + 1] = 0xf0;
+		i++;
 	}
 }
 

@@ -21,6 +21,31 @@ times 4-($-$$)   db 0x90
 ; How many sectors to read
 dw (STAGE2_END - STAGE2_START + 511) / 512
 
+%macro hex_dump_memory 3
+	push   ax
+	mov    ax, es
+	push   ax
+	push   bx
+	push   cx
+	mov    ax, ((%1 >> 16) << 12)
+    mov    es, ax
+	mov    bx, (%1 & 0xffff)
+	mov    cx, ((%2 + %3 - 1) / %3)
+%%hex_dump_loop:
+	push   cx
+    mov    cx, %3
+    call   PrintHexDump
+	pop    cx
+    add    bx, %3
+    xor    ax, ax
+    int    16h
+	loop   %%hex_dump_loop
+	pop    cx
+	pop    bx
+	pop    ax
+	mov    es, ax
+	pop    ax
+%endmacro
 
 [bits 16]
 entry:
@@ -45,46 +70,73 @@ entry:
     call   PrintHex16
     jmp    $
 .kernel_loaded:
-    mov    ax, 0x1000
-    mov    es, ax
-    mov    bx, 0x0000
-.tloop:
-    mov    cx, 0x0100
-    call   PrintHexDump
-    ; xor    ax, ax
-    ; int    16h
-    add    bx, 0x0100
-    cmp    bx, 0x0100
-    jb     .tloop
-    xor    ax, ax
-    mov    es, ax
-
-
-
     ; KERNEL.BIN now exists at [1000:0000] 0x10000
 
     mov    ax, 0x1000
     mov    es, ax
     mov    bx, 0x0000
     call   RemapELF
+    xor    ax, ax
+    mov    es, ax
 
 
-    mov ah, 0x00
-    int 16h  ; BIOS await keypress
-    int 19h  ; BIOS warning / restart
+;     hex_dump_memory 0x10000, 0x200, 0x100
+;     hex_dump_memory 0x20000, 0x200, 0x100
+
+;     mov    ax, 0x2000
+;     mov    es, ax
+;     mov    bx, 0x0000
+; .tloop:
+;     mov    cx, 0x0100
+;     call   PrintHexDump
+;     xor    ax, ax
+;     int    16h
+;     add    bx, 0x0100
+;     cmp    bx, 0x0100
+;     jb     .tloop
+;     xor    ax, ax
+;     mov    es, ax
+
+    mov ax, es
+    call PrintHex16
+
+;    mov ah, 0x00
+;    int 16h  ; BIOS await keypress
+;    int 19h  ; BIOS warning / restart
+
+
 
     ; Enter protected mode
     call real_to_pmode
 [bits 32]
+    mov esi, loaded_message_pm
+    mov ebx, 0xb8000 + (160 * 2)
+    .loop1:
+        lodsb     
+        mov BYTE [ebx], al
+        cmp al, 0
+        je .end1
+        add ebx, 2
+        jmp .loop1
+    .end1:
+
+;     call pmode_to_real
+; [bits 16]
+;     mov ax, 0
+;     int 16h
+; 
+;     call real_to_pmode
+; [bits 32]
+
     ; Enter long mode
     ; =======================================
 
     ; Construct Page Map Level 4 [0x10000]
     ; Boot   mappings [0x8000-0xBFFF]
     ; Kernel mappings [0xC000-0xFFFF]
-    mov edi, 0x10000
+    mov edi, 0x8000
     push edi
-    mov ecx, 0x2000
+    mov ecx, 0x1000
     xor eax, eax
     cld
     rep stosd
@@ -116,35 +168,35 @@ entry:
     jb .LoopPageTable
     pop edi
 
-    ; Setup kernel memory
-    ;  last 4 gb is PML4[511][508][0][0]
-    ; Set PML4[511] -> [edi + 0x4000] (PML4[511] memory)
-    lea eax, [edi + 0x4000]
-    or eax, PAGE_PRESENT | PAGE_WRITE
-    mov DWORD [edi + 0x0000 + (0x4 * 511)], eax
-
-    ; K_PML3[510 -> 511] [0xffff_ffff_8000_0000 -> 0xffff_ffff_ffff_ffff]
-    ; Set K_PML3[510] -> K_PML2[0]
-    lea eax, [edi + 0x5000]
-    or eax, PAGE_PRESENT | PAGE_WRITE
-    mov DWORD [edi + 0x4000 + (0x4 * 510)], eax
-
-    ; Set K_PML2[0] -> K_PML1[0]
-    lea eax, [edi + 0x6000]
-    or eax, PAGE_PRESENT | PAGE_WRITE
-    mov DWORD [edi + 0x5000], eax
-
-    ; Set all values in K_PML1
-    push edi
-    mov eax, PAGE_PRESENT | PAGE_WRITE
-    add eax, 0x80000_000
-.LoopPageTable2: ; make it point to physical address 0x8000_0000
-    mov DWORD [edi + 0x6000], eax
-    add eax, 0x1000
-    add edi, 8
-    cmp eax, 0x80200_000
-    jb .LoopPageTable2
-    pop edi ; kernel has 2 mb mapped at 0xffff_ffff_8000_0000 -> 0xffff_ffff_8020_0000
+;     ; Setup kernel memory
+;     ;  last 4 gb is PML4[511][508][0][0]
+;     ; Set PML4[511] -> [edi + 0x4000] (PML4[511] memory)
+;     lea eax, [edi + 0x4000]
+;     or eax, PAGE_PRESENT | PAGE_WRITE
+;     mov DWORD [edi + 0x0000 + (0x4 * 511)], eax
+; 
+;     ; K_PML3[510 -> 511] [0xffff_ffff_8000_0000 -> 0xffff_ffff_ffff_ffff]
+;     ; Set K_PML3[510] -> K_PML2[0]
+;     lea eax, [edi + 0x5000]
+;     or eax, PAGE_PRESENT | PAGE_WRITE
+;     mov DWORD [edi + 0x4000 + (0x4 * 510)], eax
+; 
+;     ; Set K_PML2[0] -> K_PML1[0]
+;     lea eax, [edi + 0x6000]
+;     or eax, PAGE_PRESENT | PAGE_WRITE
+;     mov DWORD [edi + 0x5000], eax
+; 
+;     ; Set all values in K_PML1
+;     push edi
+;     mov eax, PAGE_PRESENT | PAGE_WRITE
+;     add eax, 0x80000_000
+; .LoopPageTable2: ; make it point to physical address 0x8000_0000
+;     mov DWORD [edi + 0x6000], eax
+;     add eax, 0x1000
+;     add edi, 8
+;     cmp eax, 0x80200_000
+;     jb .LoopPageTable2
+;     pop edi ; kernel has 2 mb mapped at 0xffff_ffff_8000_0000 -> 0xffff_ffff_8020_0000
 
 
     ; Disable IRQs
@@ -230,7 +282,9 @@ LongMode:
     mov edi, 0x00b8006
     call Bit64_PutHex
 
-    mov al, BYTE [0xffff_ffff_8000_0000]
+    call 0x20000
+
+    ; mov al, BYTE [0xffff_ffff_8000_0000]
 
     ; We should allocate more memory for the kernel
 .hlt:

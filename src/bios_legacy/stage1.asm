@@ -88,6 +88,13 @@ fix_cs:
 ;       
 ;       loop .test
 
+    ; enable 20th bit
+    in al, 0x93
+    or al, 2
+    and al, ~1
+    out 0x92, al
+
+
     mov si, Stage2FileFarJump
     call DisplayMessage
 
