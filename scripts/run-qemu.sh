@@ -8,6 +8,7 @@ export PATH="/d/msys64/mingw64/bin:${PATH}"
 qemu-system-x86_64 \
 	-chardev stdio,id=char0 -mon chardev=char0,mode=readline \
 	-boot a \
+	-usb -device usb-mouse -device usb-kbd \
 	-drive format=raw,if=floppy,file=bin/bootloader.img \
 	-drive index=0,format=raw,if=ide,file=bin/fat32.img
 #	-S -s \
