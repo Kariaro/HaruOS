@@ -73,14 +73,6 @@ entry:
 .kernel_loaded:
     ; KERNEL.BIN now exists at [1000:0000] 0x10000
 
-    mov    ax, 0x1000
-    mov    es, ax
-    mov    bx, 0x0000
-    call   RemapELF
-    xor    ax, ax
-    mov    es, ax
-
-    ; KERNEL.BIN now remaped at [2000:0000] 0x10000
     ; Enter protected mode
     call real_to_pmode
 [bits 32]
@@ -152,8 +144,9 @@ entry:
 
     jmp CODE_SEG_64:LongMode          ; Load CS with 64 bit segment and flush the instruction cache
 
+
 [bits 64]
-Bit64_PutHex:
+Bit64_PutHex_8:
     push   rax
     push   rcx
     mov    ecx, eax
@@ -174,6 +167,39 @@ Bit64_PutHex:
     add    al, 0x07
 .hexa:
     ret
+Bit64_PutHex_16:
+    push   rax
+    push   rdi
+    add    rdi, 4
+    call   Bit64_PutHex_8
+    sub    rdi, 4
+    shr    rax, 8
+    call   Bit64_PutHex_8
+    pop    rdi
+    pop    rax
+    ret
+Bit64_PutHex_32:
+    push   rax
+    push   rdi
+    add    rdi, 8
+    call   Bit64_PutHex_16
+    sub    rdi, 8
+    shr    rax, 16
+    call   Bit64_PutHex_16
+    pop    rdi
+    pop    rax
+    ret
+Bit64_PutHex_64:
+    push   rax
+    push   rdi
+    add    rdi, 16
+    call   Bit64_PutHex_32
+    sub    rdi, 16
+    shr    rax, 32
+    call   Bit64_PutHex_32
+    pop    rdi
+    pop    rax
+    ret
 
 [bits 64]
 LongMode:
@@ -183,7 +209,16 @@ LongMode:
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    call 0x20000
+
+    ; KERNEL.BIN now remaped from [1000:0000] to rbx
+    mov rax, 0x10000
+    call RemapELF64
+
+    ; KERNEL.BIN entry stored in RBX
+    xor rdx, rdx
+    mov dl, BYTE [boot_drive]
+    mov rdi, rdx
+    call rbx
 .hlt:
     hlt
     jmp .hlt
@@ -192,7 +227,7 @@ LongMode:
 %include "lm_pm_code.asm"
 %include "read_sectors.asm"
 %include "load_file.asm"
-%include "load_elf.asm"
+%include "load_elf64.asm"
 
 kernel_file:
     db 'KERNEL  BIN', 0
@@ -201,6 +236,10 @@ could_not_find_kernel db 0x0d, 0x0a, 'Could not find KERNEL.O', 0x0d, 0x0a, 0
 
 loaded_message_rl db 'From STAGE2.BIN : jump was successful', 0x0d, 0x0a, 0x0d, 0x0a, 0
 loaded_message_pm db 'STAGE2.BIN entered protected mode', 0
+
+db 0xf0
+dq RemapELF64
+db 0x0f
 
 times 1024+512+512+512-($-$$)   db 0
 

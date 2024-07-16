@@ -2,16 +2,165 @@
 
 char* c_helloWorld = "Hello from KERNEL.C elf64 loaded from bootloader\0";
 
+#define VGA_WIDTH  80
+#define VGA_HEIGHT 25
+
+uint16_t vga_row;
+uint16_t vga_col;
+uint16_t vga_color;
+
+void print_hex8(uint8_t a_value);
+void print_hex16(uint16_t a_value);
+void print_hex32(uint32_t a_value);
+void print_hex64(uint64_t a_value);
+
+void put_char(uint8_t a_char);
+void print_string(uint8_t* a_string);
+void print_memory(uint8_t* a_address, size_t a_count);
+
 void kernel_main(uint8_t a_bootDrive)
 {
-	uint8_t* vgaBuffer = (uint8_t*)(0xb8000);
+	vga_row = 0;
+	vga_col = 0;
+	vga_color = 0x0f;
 
-	size_t i = 0;
-	while(c_helloWorld[i] != 0)
+	print_string("BootDrive: ");
+	print_hex8(a_bootDrive);
+	put_char('\n');
+
+	// print_string(c_helloWorld);
+	print_string("Hello from KERNEL.C elf64 loaded from bootloader\n");
+	print_memory((uint8_t*) 0x20000, 0x100);
+}
+
+static inline void outb(uint16_t a_port, uint8_t a_value)
+{
+	asm("outb %b0, %w1" : : "a"(a_value), "Nd"(a_port) : "memory");
+}
+
+void put_char(uint8_t a_char)
+{
+	if(a_char == '\r')
 	{
-		vgaBuffer[i * 2 + 0] = c_helloWorld[i];
-		vgaBuffer[i * 2 + 1] = 0xf0;
-		i++;
+		vga_col = 0;
+		return;
+	}
+	if(a_char == '\n')
+	{
+		vga_row += 1;
+		vga_col = 0;
+		return;
+	}
+
+	uint8_t* vgaBuffer = (uint8_t*)(0xb8000);
+	size_t index = vga_row * 2 * VGA_WIDTH + vga_col * 2;
+	vgaBuffer[index + 0] = a_char;
+	vgaBuffer[index + 1] = vga_color;
+
+	vga_col += 1;
+	if(vga_col >= VGA_WIDTH)
+	{
+		vga_col = 0;
+		vga_row += 1;
+	}
+
+	if(vga_row >= VGA_HEIGHT)
+	{
+		for(size_t i = VGA_WIDTH; i < VGA_HEIGHT * VGA_WIDTH; i++)
+		{
+			vgaBuffer[(i - VGA_WIDTH) * 2 + 0] = vgaBuffer[i * 2 + 0];
+			vgaBuffer[(i - VGA_WIDTH) * 2 + 1] = vgaBuffer[i * 2 + 1];
+		}
+		vga_row -= 1;
+	}
+
+	// Update cursor position
+	size_t position = (vga_row * VGA_WIDTH) + vga_col;
+	outb(0x3D4, 0x0F);
+	outb(0x3D5, (position & 0xff));
+	outb(0x3D4, 0x0E);
+	outb(0x3D5, ((position >> 8) & 0xff));
+}
+
+void print_string(uint8_t* a_string)
+{
+	size_t i = 0;
+	uint8_t character = 0;
+	while((character = a_string[i++]) != 0)
+	{
+		put_char(character);
+	}
+}
+
+void print_hex8(uint8_t a_value)
+{
+	char* buffer = "0123456789abcdef\0";
+	put_char(*(buffer + ((a_value & 0xf0) >> 4)));
+	put_char(*(buffer + (a_value & 0x0f)));
+}
+
+void print_hex16(uint16_t a_value)
+{
+	print_hex8(a_value >> 8);
+	print_hex8(a_value);
+}
+
+void print_hex32(uint32_t a_value)
+{
+	print_hex8(a_value >> 24);
+	print_hex8(a_value >> 16);
+	print_hex8(a_value >> 8);
+	print_hex8(a_value);
+}
+
+void print_hex64(uint64_t a_value)
+{
+	print_hex8(a_value >> 56);
+	print_hex8(a_value >> 48);
+	print_hex8(a_value >> 40);
+	print_hex8(a_value >> 32);
+	print_hex8(a_value >> 24);
+	print_hex8(a_value >> 16);
+	print_hex8(a_value >> 8);
+	print_hex8(a_value);
+}
+
+void print_memory(uint8_t* a_address, size_t a_count)
+{
+	// 4 byte address
+	for(size_t index = 0; index < a_count; index += 16)
+	{
+		print_hex32((uint32_t) (uintptr_t) (a_address));
+		put_char(':');
+		put_char(' ');
+
+		size_t left = a_count - index;
+		size_t count = (left > 15) ? 16 : left;
+		for(size_t i = 0; i < count; i++)
+		{
+			print_hex8(*(a_address + i));
+			put_char(' ');
+		}
+
+		for(size_t i = count; i < 16; i++)
+		{
+			put_char(' ');
+			put_char(' ');
+			put_char(' ');
+		}
+
+		put_char(':');
+		put_char(' ');
+
+		for(size_t i = 0; i < count; i++)
+		{
+			uint8_t character = *(a_address + i);
+			character = (character < 0x20 ? '.' : character);
+			put_char(character);
+		}
+
+		put_char('\n');
+		a_address += 16;
 	}
 }
 

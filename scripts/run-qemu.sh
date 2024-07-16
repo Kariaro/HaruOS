@@ -16,8 +16,7 @@ exit
 
 export PATH="/d/msys64/mingw64/bin:${PATH}"
 gdb -ex 'target remote localhost:1234' \
-    -ex 'set architecture i8086' \
-    -ex 'break *0x7cd8' \
+    -ex 'break *0x0d89' \
 	-ex 'continue'
 
 
