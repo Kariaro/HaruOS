@@ -33,7 +33,17 @@ cat bin/stage1.bin bin/stage2.bin > bin/bootloader.img
 
 # nasm -f bin src/bios_legacy/boot_test.asm -o bin/stage3.bin -Isrc/bios_legacy
 
-x86_64-elf-gcc src/kernel/kernel.c -o bin/gcc/kernel.o -ffreestanding -nostdlib -nostdinc -T src/kernel/link.ld
+# x86_64-elf-gcc src/kernel/isr.c -o bin/gcc/isr.o -lbin/gcc/ -ffreestanding -nostdlib -nostdinc -Iinclude
+nasm -f elf64 src/kernel/interrupts.s -o bin/gcc/interrupts.s.o
+x86_64-elf-gcc \
+	src/kernel/kernel.c \
+	src/kernel/terminal.c \
+	src/kernel/isr.c \
+	-o bin/gcc/kernel.o \
+	-ffreestanding -nostdlib -nostdinc \
+	-T src/kernel/link.ld \
+	-Iinclude \
+	bin/gcc/interrupts.s.o \
 # strip -O elf64-little -o bin/gcc/kernel_elf64.o bin/gcc/kernel.o
 
 # ld -vvv -m i386ep -o bin/gcc/kernel_ld.o -Ttext 0x1000 bin/gcc/kernel.o
