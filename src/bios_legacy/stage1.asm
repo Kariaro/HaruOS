@@ -49,6 +49,13 @@ fix_cs:
     mov    sp, 0xFFFF
     sti
 
+; .loop:
+;     mov ah, 0
+;     int 16h
+;     mov ah, 0x0e
+;     int 10h
+;     jmp .loop
+
     ; Save boot drive
     mov    BYTE [BootDrive], dl
 

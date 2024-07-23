@@ -25,29 +25,29 @@ boot_drive:
     db 0x00
 
 %macro hex_dump_memory 3
-	push   ax
-	mov    ax, es
-	push   ax
-	push   bx
-	push   cx
-	mov    ax, ((%1 >> 16) << 12)
+    push   ax
+    mov    ax, es
+    push   ax
+    push   bx
+    push   cx
+    mov    ax, ((%1 >> 16) << 12)
     mov    es, ax
-	mov    bx, (%1 & 0xffff)
-	mov    cx, ((%2 + %3 - 1) / %3)
+    mov    bx, (%1 & 0xffff)
+    mov    cx, ((%2 + %3 - 1) / %3)
 %%hex_dump_loop:
-	push   cx
+    push   cx
     mov    cx, %3
     call   PrintHexDump
-	pop    cx
+    pop    cx
     add    bx, %3
     xor    ax, ax
     int    16h
-	loop   %%hex_dump_loop
-	pop    cx
-	pop    bx
-	pop    ax
-	mov    es, ax
-	pop    ax
+    loop   %%hex_dump_loop
+    pop    cx
+    pop    bx
+    pop    ax
+    mov    es, ax
+    pop    ax
 %endmacro
 
 [bits 16]
@@ -71,6 +71,9 @@ entry:
     call   PrintHex16
     jmp    $
 .kernel_loaded:
+    mov    ax, bx
+    call   PrintHex16
+
     ; KERNEL.BIN now exists at [1000:0000] 0x10000
 
     ; Enter protected mode

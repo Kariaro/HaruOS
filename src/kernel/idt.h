@@ -1,6 +1,6 @@
 
-#ifndef ISR_H_
-#define ISR_H_
+#ifndef IDT_H_
+#define IDT_H_
 
 #include <stdint.h>
 
@@ -43,9 +43,10 @@ typedef void (*ISR_Handler)(regs_t* a_regs, uint8_t a_index);
 
 extern void isr_handler(regs_t* a_regs, uint8_t a_index);
 extern void irq_handler(regs_t* a_regs, uint8_t a_index);
-extern void test_handler(regs_t* a_regs, uint8_t a_index);
 
 void idt_init();
+void idt_set_irq(uint8_t a_irq, IRQ_Handler a_function);
+void idt_set_isr(uint8_t a_isr, ISR_Handler a_function);
 
 #ifdef __cplusplus
 }

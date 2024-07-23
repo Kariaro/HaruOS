@@ -1,4 +1,4 @@
-#include "isr.h"
+#include "idt.h"
 #include "terminal.h"
 #include "common.h"
 
@@ -88,20 +88,8 @@ void irq_handler(regs_t* a_regs, uint8_t a_index)
     // terminal_char('\n');
     // PRINT_REGS_T(a_regs);
 
-    if(a_index >= 8)
-    {
-        outb(0xA0, 0x20);
-    }
-
+    if(a_index >= 8) outb(0xA0, 0x20);
     outb(0x20, 0x20);
-}
-
-void test_handler(regs_t* a_regs, uint8_t a_index)
-{
-    terminal_string("call to (TEST handler) index=");
-    terminal_hex8(a_index);
-    terminal_char('\n');
-    PRINT_REGS_T(a_regs);
 }
 
 // 32 + 16 + 1
@@ -115,7 +103,8 @@ void test_handler(regs_t* a_regs, uint8_t a_index)
 
 extern void* isr_stub_table[];
 extern void* irq_stub_table[];
-extern void* test_stub_table[];
+extern ISR_Handler isr_buffer[];
+extern IRQ_Handler irq_buffer[];
 
 void idt_set_descriptor(uint8_t a_vector, void* a_offset, uint16_t a_selector, uint8_t a_flags) {
     idt_entry_t* descriptor = &idt[a_vector];
@@ -133,14 +122,7 @@ void idt_init() {
     terminal_string("[Init ISR.O]\n");
     idtr.base = (uintptr_t) &idt[0];
     idtr.limit = (uint16_t) sizeof(idt_entry_t) * IDT_MAX_DESCRIPTORS - 1;
-
-    for(uint8_t index = 0; index < 255; index++)
-    {
-        if(index == 0x80) continue; // io_wait()?
-
-        idt_set_descriptor(index, test_stub_table[index], GDT_OFFSET_KERNEL_CODE, 0x8E);
-    }
-
+    
     for(uint8_t index = 0; index < 32; index++)
     {
         idt_set_descriptor(index, isr_stub_table[index], GDT_OFFSET_KERNEL_CODE, 0x8E);
@@ -153,4 +135,14 @@ void idt_init() {
 
     asm volatile ("lidt %0" : : "m"(idtr)); // load the new IDT
     asm volatile ("sti"); // set the interrupt flag
+}
+
+void idt_set_irq(uint8_t a_irq, IRQ_Handler a_function)
+{
+    irq_buffer[a_irq] = a_function;
+}
+
+void idt_set_isr(uint8_t a_isr, ISR_Handler a_function)
+{
+    isr_buffer[a_isr] = a_function;
 }
