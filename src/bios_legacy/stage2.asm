@@ -217,11 +217,14 @@ LongMode:
     mov rax, 0x10000
     call RemapELF64
 
+    ; Move stack to a better position
+    mov rsp, 0x80000
+
     ; KERNEL.BIN entry stored in RBX
     xor rdx, rdx
     mov dl, BYTE [boot_drive]
     mov rdi, rdx
-    call rbx
+    jmp rbx
 .hlt:
     hlt
     jmp .hlt

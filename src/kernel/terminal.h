@@ -32,6 +32,9 @@ void terminal_hex8(uint8_t a_value);
 void terminal_hex16(uint16_t a_value);
 void terminal_hex32(uint32_t a_value);
 void terminal_hex64(uint64_t a_value);
+
+void terminal_bin8(uint8_t a_value);
+
 void terminal_char(uint8_t a_character);
 void terminal_string(uint8_t* a_buffer);
 

@@ -30,10 +30,15 @@ static inline __attribute__((always_inline)) void io_wait()
 
 static inline __attribute((always_inline)) void software_wait()
 {
-    for(size_t i = 0; i < 100000; i++)
+    for(size_t i = 0; i < 200000000; i++)
     {
         asm volatile ("nop");
     }
+}
+
+static inline __attribute((always_inline)) void panic()
+{
+    asm volatile ("int $0x0d");
 }
 
 

@@ -4,153 +4,235 @@
 #include "common.h"
 #include "terminal.h"
 
+#define PS2_STATUS      0x64
+#define PS2_DATA        0x60
+#define PS2_STAT_KDB    1<<0
+#define PS2_STAT_MOUSE  1<<1
+
 void kbd_handler(regs_t* a_regs, uint8_t a_index)
 {
-    // a_index is always == 1
-    // if(a_index >= 8) outb(0xA0, 0x20);
-
-    // uint8_t control = inb(0x64);
-    uint8_t scancode = inb(0x60);
-    terminal_string("keyboard -> ");
-    // terminal_hex8(control);
+    uint8_t status = inb(PS2_STATUS);
+    // if((status & PS2_STAT_MOUSE) != 0)
+    // {
+    //     goto done;
+    // }
+    
+    uint8_t scancode = inb(PS2_DATA);
+    uint8_t press = 0;
+    
+    terminal_string("kbd status = ");
+    terminal_bin8(status),
+    terminal_string(" , scancode = ");
     terminal_hex8(scancode);
+    terminal_string(" , press ");
+    terminal_bin8(press);
     terminal_char('\n');
+    // while(inb(PS2_STATUS) & 1)
+    // {
+    //     inb(PS2_DATA);
+    // }
 
+done:
     // Send EOI (End of interrupt)
     outb(0x20, 0x20);
 }
 
+uint8_t setup_ps2();
+
+uint8_t get_ps2_cmd(uint8_t a_cmd);
+void send_ps2_cmd(uint8_t a_cmd);
+void send_ps2_cmd_ex(uint8_t a_cmd, uint8_t a_data);
+
 void kbd_init()
 {
-    idt_set_irq(1, kbd_handler);
+    // setup_ps2();
+
+    idt_install_irq(1, kbd_handler);
 
     // Enable IRQ0
     pic_enable_irq(1);
+
+    // // disable ports
+    // outb(0x64, 0xa7);
+    // outb(0x64, 0xad);
+    // // enable keyboard
+    // outb(0x64, 0xae);
+    // // send command to port 1
+    // outb(0x64, 0xd2);
+    // outb(0x60, 0xf4);
+    // io_wait();
+    // outb(0x64, 0xd2);
+    // outb(0x60, 0xff);
+    // io_wait();
+    // outb(0x64, 0xd0);
+    // terminal_bin8(inb(0x60));
 }
 
-
-void setup_ps2kbd()
+void flush_kbd()
 {
+    while((inb(0x64) & 1) != 0)
+    {
+        inb(0x60);
+    }
+}
 
-    terminal_string("PS/2: setup keyboard\n");
-
-    // (a) do a couple of dummy reads from the data port
-    for(size_t i = 0; i < 64; i++) inb(0x60);
-
-    // (b) get the current controller configuration byte
-    outb(0x64, 0x20);
-    uint8_t ccb = inb(0x60);
-
-    // (c) do another dummy read from the data port
-    for(size_t i = 0; i < 64; i++) inb(0x60);
-
-    // (d) set a new configuration byte
-    outb(0x60, 0b00110111); // 0x37
-    outb(0x64, 0x60);
-    io_wait();
-
-    // (e) do another dummy read from the data port
-    for(size_t i = 0; i < 64; i++) inb(0x60);
-
-    // (f) send distable device B command to the controller
-    outb(0x64, 0xa7);
-    io_wait();
-
-    // (g) get the current controller configuration
-    outb(0x64, 0x20);
-    io_wait();
-    ccb = inb(0x60);
-
-    // (h) check if second port is usable
-    uint8_t second_port_not_usable = ((ccb & 0xb00100000) == 0);
-    terminal_string("PS/2: second port -> ");
-    terminal_string(second_port_not_usable ? "(usable)" : "(unusable)");
-    terminal_char('\n');
-
-    // (i) send port again to re-enable port
-    outb(0x64, 0xa8);
-
-    // (j) create new node ....
-    // (k) disable scanning for device a 
-    outb(0x64, 0xf5);
-
-
-    terminal_string("ccb: ");
-    terminal_hex8(ccb);
-    terminal_char('\n');
-
-    /*
-
-    // disable ps/2 ports
-    outb(0x64, 0xad);
-    outb(0x64, 0xa7);
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    outb(0x64, 0xae);
-
-    outb(0x64, 0xf5);
-    while(inb(0x60) != 0xFA);
-    outb(0x64, 0xfa);
-    uint8_t a = inb(0x60);
-    uint8_t b = inb(0x60);
-    terminal_hex8(a);
-    terminal_char(' ');
-    terminal_hex8(b);
-    terminal_char('\n');
+void send_ps2_cmd(uint8_t a_cmd)
+{
+    uint32_t max_loops;
 
     // flush output buffer
-    // while((inb(0x64) & 1) == 1)
+    max_loops = 0x100000;
+    uint8_t status;
+    // while(((status = inb(PS2_STATUS)) & 3) != 0)
     // {
-    //     inb(0x60);
+    //     // clear read status
+    //     if((status & 1) != 0) inb(0x60);
+    //     io_wait();
+    //     if(max_loops-- == 1)
+    //     {
+    //         terminal_string("[PS/2]: failed to flush input and output buffer ");
+    //         terminal_bin8(status);
+    //         panic();
+    //     }
     // }
 
-    outb(0x64, 0x20);
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    io_wait();
-    uint8_t ccb = inb(0x60);
+    // issue command
+    outb(0x64, a_cmd);
 
-    terminal_string("ccb: ");
-    terminal_hex8(ccb);
+    // wait for command to finish
+    max_loops = 0x10000;
+    // while((inb(PS2_STATUS) & 2) != 0)
+    // {
+    //     io_wait();
+    //     if(max_loops-- == 1)
+    //     {
+    //         terminal_string("[PS/2]: failed to wait for command");
+    //         panic();
+    //     }
+    // }
+}
+
+uint8_t get_ps2_cmd(uint8_t a_cmd)
+{
+    send_ps2_cmd(a_cmd);
+    uint32_t max_loops = 0x100000;
+    // while((inb(PS2_STATUS) & 1) != 0)
+    // {
+    //     io_wait();
+    //     if(max_loops-- == 1)
+    //     {
+    //         terminal_string("[PS/2]: failed to read data PS/2");
+    //         panic();
+    //     }
+    // }
+    return inb(PS2_DATA);
+}
+
+void send_ps2_cmd_ex(uint8_t a_cmd, uint8_t a_data)
+{
+    uint32_t max_loops;
+
+    // flush output buffer
+    max_loops = 0x100000;
+    uint8_t status;
+    // while(((status = inb(PS2_STATUS)) & 3) != 0)
+    // {
+    //     // clear read status
+    //     if((status & 1) != 0) inb(PS2_DATA);
+    //     io_wait();
+    //     if(max_loops-- == 1)
+    //     {
+    //         terminal_string("[PS/2]: failed to flush input and output buffer");
+    //         panic();
+    //     }
+    // }
+
+    // issue command
+    outb(0x64, a_cmd);
+    outb(PS2_DATA, a_data);
+
+    // wait for command to finish
+    max_loops = 0x100000;
+    // while((inb(PS2_STATUS) & 2) != 0)
+    // {
+    //     io_wait();
+    //     if(max_loops-- == 1)
+    //     {
+    //         terminal_string("[PS/2]: failed to wait for command");
+    //         panic();
+    //     }
+    // }
+}
+
+uint8_t setup_ps2()
+{
+    terminal_string("[PS/2]: setup keyboard\n");
+
+    uint8_t port1 = 0;
+    uint8_t port2 = 0;
+
+    // disable ps/2 ports
+    send_ps2_cmd(0xad);
+    send_ps2_cmd(0xa7);
+
+    flush_kbd();
+
+    // check if second PS/2 port is usable
+    uint8_t ccb = get_ps2_cmd(0x20);
+    terminal_string("[PS/2]: ccb = ");
+    terminal_bin8(ccb);
     terminal_char('\n');
 
-    // disable irqs
-    ccb &= 0xfc;
-    // disable PS/2 port 1 translation (we don't do mode 1 keybs anyway)
-    ccb &= 0xbf;
-    // actually set
-    outb(0x64, 0x60);
-    outb(0x60, ccb);
+    if((ccb & 1) == 0) port1 |= 1;
+    if((ccb & 2) == 0) port2 |= 1;
 
-    uint8_t singlechannel = 0;
-    if ((ccb & 0x20) > 0) {
-        terminal_string("PS/2: might be a two-port ps/2 controller\n");
+    // control if port 1 is set
+    send_ps2_cmd(0xa8);
+    ccb = get_ps2_cmd(0x20);
+    if((ccb & 1) == 0) port1 |= 2;
+
+    // control if port 2 is set
+    send_ps2_cmd(0xae);
+    ccb = get_ps2_cmd(0x20);
+    if((ccb & 2) == 0) port2 |= 2;
+
+    // disable ps/2 ports
+    send_ps2_cmd(0xad);
+    send_ps2_cmd(0xa7);
+
+    // information about ports
+    terminal_string("[PS/2]: ");
+    terminal_string("port1 = ");
+    terminal_string(port1 == 3 ? "OK" : "BAD");
+    terminal_string(" , port2 = ");
+    terminal_string(port2 == 3 ? "OK" : "BAD");
+    terminal_char('\n');
+
+    ccb = get_ps2_cmd(0x20);
+    terminal_string("[PS/2]: ccb = ");
+    terminal_bin8(ccb);
+    terminal_char('\n');
+
+    terminal_string("[PS/2]: controller port 1 test: ");
+    uint8_t port1result = get_ps2_cmd(0xab);
+    if(port1result != 0x00) {
+        terminal_hex8(port1result);
+        terminal_string("\n");
     } else {
-        terminal_string("PS/2: can't be a two-port ps/2 controller\n");
-        singlechannel = 1;
+        terminal_string("OK\n");
+    }
+    
+    terminal_string("[PS/2]: controller port 2 test: ");
+    uint8_t port2result = get_ps2_cmd(0xa9);
+    if(port2result != 0x00) {
+        terminal_hex8(port2result);
+        terminal_string("\n");
+    } else {
+        terminal_string("OK\n");
     }
 
-    terminal_string("PS/2: controller self test result: ");
-    outb(0x64, 0xaa);
-    uint8_t response = inb(0x60);
+    terminal_string("[PS/2]: controller self test result: ");
+    uint8_t response = get_ps2_cmd(0xaa);
     if(response == 0x55) {
         terminal_string("OK\n");
     } else if(response == 0xfc) {
@@ -162,17 +244,9 @@ void setup_ps2kbd()
         // TODO: do something here
     }
 
-    terminal_string("PS/2: controller port 1 test: ");
-    outb(0x64, 0xab);
-    uint8_t port1result = inb(0x60);
-    if (port1result != 0x00) {
-        terminal_hex8(port1result);
-        terminal_string("\n");
-    } else {
-        terminal_string("OK\n");
-    }
+    // enable ps/2 ports
+    send_ps2_cmd(0xa8);
+    send_ps2_cmd(0xae);
 
-    outb(0x64, 0xa8);
-    outb(0x64, 0xae);
-    */
+    return 1;
 }

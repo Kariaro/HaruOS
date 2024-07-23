@@ -27,12 +27,15 @@
 %assign index 0
 %rep    32
 isr_stub_%+index:
+    cli
+    cld
     pusha
     mov rsi, %+index
     mov rdi, rsp
     mov rax, QWORD [isr_buffer + ((%+index) * 8)]
     call rax
     popa
+    sti
     iretq
 %assign index index + 1
 %endrep
@@ -40,12 +43,15 @@ isr_stub_%+index:
 %assign index 0
 %rep    16
 irq_stub_%+index:
+    cli
+    cld
     pusha
     mov rsi, %+index
     mov rdi, rsp
     mov rax, QWORD [irq_buffer + ((%+index) * 8)]
     call rax
     popa
+    sti
     iretq
 %assign index index + 1
 %endrep

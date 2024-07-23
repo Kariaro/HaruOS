@@ -35,16 +35,9 @@ void kernel_main(uint8_t a_bootDrive)
     terminal_hex8(a_bootDrive);
     terminal_char('\n');
     terminal_color(VGA_LIGHT_GRAY, VGA_BLACK);
-
     terminal_string(c_helloWorld);
 
-    // software_wait();
-
     // terminal_memory_dump((uint8_t*) 0x20000, 0x100);
-
-    // asm volatile ("cli"); // set the interrupt flag
-
-    // asm volatile ("sti"); // set the interrupt flag
 
     // asm volatile ("mov $0xffee00, %rax");
     // asm volatile ("int $0x0a");
@@ -53,22 +46,24 @@ void kernel_main(uint8_t a_bootDrive)
 
     // *((uint64_t*) 0xdeadbeef) = 1;
 
-    // for(size_t i = 0; i < 160000000; i++)
-    // {
-    //     uint8_t a = getc();
-    //     if(a != 0)
-    //     {
-    //         terminal_hex8(a);
-    //         terminal_char(' ');
-    //     }
-    //     if((i % 10000000) == 0)
-    //     {
-    //         terminal_char('!');
-    //     }
-    // }
+    // should be stack pointer
+    uint64_t rsp;
+    asm volatile ("mov %%rsp, %0" : "=r" (rsp));
+    terminal_hex64(rsp);
+    terminal_char('\n');
+    
+
+    // asm volatile ("mov $0x01, %rax");
+    // asm volatile ("mov $0x02, %rcx");
+    // asm volatile ("mov $0x03, %rdx");
+    // asm volatile ("mov $0x04, %rbx");
+    // asm volatile ("int $0x0d");
 
     // HALT
-    while(1);
+    while(1)
+    {
+        asm volatile ("hlt");
+    }
 
     return;
 }

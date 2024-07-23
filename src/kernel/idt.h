@@ -23,12 +23,19 @@ struct data_idtr
 } __attribute__((packed));
 typedef struct data_idtr idtr_t;
 
-
+// struct data_regs
+// {
+//     uint64_t cr2;
+//     uint64_t ds;
+//     uint64_t rdi, rsi, rbp, rsp, rbx, rdx, rcx, rax;
+//     uint64_t int_no, err_code;
+//     uint64_t rip, csm, eflags, useresp, ss;
+// };
 struct data_regs
 {
-    // uint64_t p_rss, p_rsp, rflags, rcs, rip;
-    // uint64_t return_call;
     uint64_t rax, rcx, rdx, rbx, rsp, rbp, rsi, rdi;
+    uint64_t int_no, err_code;
+    uint64_t eip, csm, eflags, useresp, ss;
 };
 typedef struct data_regs regs_t;
 
@@ -45,8 +52,8 @@ extern void isr_handler(regs_t* a_regs, uint8_t a_index);
 extern void irq_handler(regs_t* a_regs, uint8_t a_index);
 
 void idt_init();
-void idt_set_irq(uint8_t a_irq, IRQ_Handler a_function);
-void idt_set_isr(uint8_t a_isr, ISR_Handler a_function);
+void idt_install_irq(uint8_t a_irq, IRQ_Handler a_func);
+void idt_install_isr(uint8_t a_isr, ISR_Handler a_func);
 
 #ifdef __cplusplus
 }
