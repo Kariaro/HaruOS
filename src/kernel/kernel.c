@@ -15,6 +15,7 @@ uint8_t getc()
     return inb(0x60);
 }
 
+
 void kernel_main(uint8_t a_bootDrive)
 {
     // Init the terminal
@@ -26,9 +27,6 @@ void kernel_main(uint8_t a_bootDrive)
     // Init PIC
     pic_init();
 
-    // Init KBD
-    kbd_init();
-
     // Print boot drive
     terminal_string("BootDrive: \0");
     terminal_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -36,6 +34,9 @@ void kernel_main(uint8_t a_bootDrive)
     terminal_char('\n');
     terminal_color(VGA_LIGHT_GRAY, VGA_BLACK);
     terminal_string(c_helloWorld);
+
+    // Init KBD
+    kbd_init();
 
     // terminal_memory_dump((uint8_t*) 0x20000, 0x100);
 
@@ -63,6 +64,12 @@ void kernel_main(uint8_t a_bootDrive)
     while(1)
     {
         asm volatile ("hlt");
+
+        uint16_t key = poll_key();
+        terminal_hex16(key);
+        terminal_char(' ');
+        terminal_char(key & 0xff);
+        terminal_char('\n');
     }
 
     return;

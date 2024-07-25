@@ -4,22 +4,15 @@
 
 #include <stdint.h>
 
-static inline __attribute__((always_inline)) void outb(uint16_t a_port, uint8_t a_value)
+static inline void outb(uint16_t a_port, uint8_t a_value)
 {
-    asm volatile ("outb %b0, %w1" : : "a"(a_value), "Nd"(a_port) : "memory");
+    asm volatile ("outb %1, %0" : : "dN"(a_port), "a"(a_value));
 }
 
-static inline __attribute__((always_inline)) uint8_t inb(uint16_t a_port)
+static inline uint8_t inb(uint16_t a_port)
 {
     uint8_t ret;
-    asm volatile ("inb %w1, %b0" : : "a"(ret), "Nd"(a_port) : "memory");
-    return ret;
-}
-
-static inline __attribute__((always_inline)) uint16_t inw(uint16_t port)
-{
-    uint16_t ret;
-    asm volatile ("inw %1, %0" : "=a" (ret) : "dN" (port));
+    asm volatile ("inb %1, %0" : "=a"(ret) : "dN"(a_port));
     return ret;
 }
 
